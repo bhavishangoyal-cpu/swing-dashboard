@@ -157,7 +157,8 @@ def add_extra_indicators(df):
     df['MACD_H'] = df['MACD'] - df['MACD_Signal']
 
     # Fill NaN values
-    df = df.fillna(method='bfill').fillna(method='ffill').fillna(0)
+    # New corrected code
+    df = df.bfill().ffill().fillna(0)
 
     return df
 
