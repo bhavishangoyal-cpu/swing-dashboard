@@ -19,8 +19,22 @@ def load_watchlist():
 
 
 def save_watchlist(watchlist):
-    """Save tickers to CSV"""
-    df = pd.DataFrame({'Yahoo Ticker': watchlist})
+    """Save tickers to CSV with company names"""
+    # Load existing data first
+    csv_path = "watchlist.csv"
+    if os.path.exists(csv_path):
+        existing_df = pd.read_csv(csv_path)
+        existing_dict = dict(zip(existing_df['Yahoo Ticker'],
+                                 existing_df.get('Company Name', existing_df['Yahoo Ticker'])))
+    else:
+        existing_dict = {}
+
+    # Add new tickers with their names (or ticker as placeholder)
+    company_names = [existing_dict.get(ticker, ticker) for ticker in watchlist]
+    df = pd.DataFrame({
+        'Yahoo Ticker': watchlist,
+        'Company Name': company_names
+    })
     df.to_csv("watchlist.csv", index=False)
 
 
@@ -29,9 +43,13 @@ def load_ticker_to_name():
     csv_path = "watchlist.csv"
     if os.path.exists(csv_path):
         df = pd.read_csv(csv_path)
-        return dict(zip(df['Yahoo Ticker'], df['Company Name']))
+        # Handle missing Company Name
+        if 'Company Name' in df.columns:
+            return dict(zip(df['Yahoo Ticker'], df['Company Name']))
+        else:
+            # If Company Name doesn't exist, use ticker as name
+            return dict(zip(df['Yahoo Ticker'], df['Yahoo Ticker']))
     return {}
-
 
 # ================== PAGE CONFIG ==================
 
@@ -438,11 +456,11 @@ if st.session_state.watchlist:
             'Company Name': ticker_to_name.get(ticker, "-"),
             'Enhanced Signal': signal,
             'Price': round(safe(last['Close']), 2) if pd.notna(last['Close']) else "-",
-            'RSI': round(safe(last['RSI']), 1) if pd.notna(last['RSI']) else "-",
+            'RSI': round(safe(last.get('RSI', np.nan)), 1) if pd.notna(last.get('RSI', np.nan)) else "-",
             'Volume_Ratio': round(safe(last['Volume_Ratio']), 2) if pd.notna(last.get('Volume_Ratio')) else "-",
             'Distance_to_Support': round(safe(last['Distance_to_Support']), 2) if pd.notna(
                 last.get('Distance_to_Support')) else "-",
-            'ADX': round(safe(last['ADX']), 2) if pd.notna(last['ADX']) else "-",
+            'ADX': round(safe(last.get('ADX', np.nan)), 2) if pd.notna(last.get('ADX', np.nan)) else "-",
             'Score': 0,
             'Reason': reason
         })
