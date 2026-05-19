@@ -212,8 +212,7 @@ def enhanced_signal(df):
         # ===== 5 URGENT CONDITIONS =====
         urgent = {
             "Trend Up (EMA50>EMA200)": float(last['EMA50']) > float(last['EMA200']),
-            "MACD Cross": (float(last['MACD']) > float(last['MACD_Signal'])) and \
-                          (float(prev['MACD']) <= float(prev['MACD_Signal'])),
+            "MACD Bullish": float(last['MACD']) > float(last['MACD_Signal']),
             "ADX>25": float(last['ADX']) > 25,
             "Volume >1.5x": float(last.get('Volume_Ratio', 0)) > 1.5,
             "Support <2%": float(last.get('Distance_to_Support', 100)) < 2.0
