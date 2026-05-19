@@ -355,8 +355,26 @@ def highlight_signal(val):
 # ================== STREAMLIT UI - SWING SCREENER ==================
 
 # Initialize session state
+# ================== STREAMLIT UI - SWING SCREENER ==================
+
+# Initialize session state
 if 'watchlist' not in st.session_state:
     st.session_state.watchlist = load_watchlist()
+
+ticker_to_name = load_ticker_to_name()
+
+# ===== MARKET STATUS (ADD THIS) =====
+st.markdown("---")
+spy_bullish, spy_msg = check_market_context()
+
+if spy_bullish:
+    st.success(f"📈 {spy_msg}")
+else:
+    st.error(f"📉 {spy_msg}")
+
+st.markdown("---")
+# ===== END MARKET STATUS =====
+
 
 ticker_to_name = load_ticker_to_name()
 
