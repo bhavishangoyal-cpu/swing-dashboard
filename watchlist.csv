@@ -1,64 +1,64 @@
 Rank,Country,Company Name,Yahoo Ticker
-1,US,Apple Inc.,AAPL
-2,US,Microsoft Corp,MSFT
-3,US,Alphabet Inc. (Google) Class A,GOOGL
-4,US,Alphabet Inc. (Google) Class C,GOOG
-5,US,Amazon.com,AMZN
-6,US,NVIDIA Corp,NVDA
-7,US,Berkshire Hathaway,BRK-B
-8,US,Meta Platforms,META
-9,US,Tesla Inc.,TSLA
-10,US,JPMorgan Chase,JPM
-11,US,UnitedHealth Group,UNH
-12,US,Exxon Mobil,XOM
-13,US,Johnson & Johnson,JNJ
-14,US,Visa Inc.,V
-15,US,Procter & Gamble,PG
-16,US,Eli Lilly & Co,LLY
-17,US,Home Depot,HD
-18,US,Mastercard Inc.,MA
-19,US,Bank of America,BAC
-20,US,Broadcom Inc.,AVGO
-21,US,AbbVie Inc.,ABBV
-22,US,PepsiCo Inc.,PEP
-23,US,Merck & Co.,MRK
-24,US,Coca-Cola,KO
-25,US,Adobe Inc.,ADBE
-26,US,Wells Fargo,WFC
-27,US,Cisco Systems,CSCO
-28,US,Walmart Inc.,WMT
-29,US,Accenture,ACN
-30,US,McDonald's,MCD
-31,US,Thermo Fisher Scientific,TMO
-32,US,Chevron Corp.,CVX
-33,US,Salesforce Inc.,CRM
-34,US,Oracle Corp,ORCL
-35,US,Verizon,VZ
-36,US,Pfizer,PFE
-37,US,Amgen Inc.,AMGN
-38,US,IBM,IBM
-39,US,Texas Instruments,TXN
-40,US,Booking Holdings,BKNG
-41,US,Intuit,INTU
-42,US,Bristol-Myers Squibb,BMY
-43,US,Raytheon Technologies,RTX
-44,US,Stryker Corp.,SYK
-45,US,General Electric,GE
-46,US,Honeywell,HON
-47,US,Lockheed Martin,LMT
-48,US,Walt Disney,DIS
-49,US,Caterpillar,CAT
-50,US,ConocoPhillips,COP
-51,US,Advanced Micro Devices,AMD
-52,US,Starbucks,SBUX
-53,US,T-Mobile US,TMUS
-54,US,American Express,AXP
-55,US,Cigna,CI
-56,US,Lowe’s,LOW
-57,US,CVS Health,CVS
-58,US,Colgate-Palmolive,CL
-59,US,Target,TGT
-60,US,Ford Motor,F
+1,US,NVIDIA Corporation,NVDA
+2,US,Microsoft Corporation,MSFT
+3,US,Apple Inc.,AAPL
+4,US,Amazon.com Inc.,AMZN
+5,US,Meta Platforms Inc.,META
+6,US,Alphabet Inc.,GOOGL
+7,US,Tesla Inc.,TSLA
+8,US,Advanced Micro Devices,AMD
+9,US,Broadcom Inc.,AVGO
+10,US,Micron Technology,MU
+11,US,ASML Holding,ASML
+12,US,Lam Research,LRCX
+13,US,KLA Corporation,KLAC
+14,US,Palantir Technologies,PLTR
+15,US,CrowdStrike Holdings,CRWD
+16,US,Snowflake Inc.,SNOW
+17,US,Datadog Inc.,DDOG
+18,US,ServiceNow,NOW
+19,US,Salesforce Inc.,CRM
+20,US,Zscaler Inc.,ZS
+21,US,Cloudflare Inc.,NET
+22,US,Palo Alto Networks,PANW
+23,US,Super Micro Computer,SMCI
+24,US,Carvana Co.,CVNA
+25,US,Coinbase Global,COIN
+26,US,Robinhood Markets,HOOD
+27,US,Roku Inc.,ROKU
+28,US,Shopify Inc.,SHOP
+29,US,Affirm Holdings,AFRM
+30,US,Marathon Digital Holdings,MARA
+31,US,CleanSpark Inc.,CLSK
+32,US,Iris Energy Ltd.,IREN
+33,US,NIO Inc.,NIO
+34,US,JPMorgan Chase,JPM
+35,US,Goldman Sachs,GS
+36,US,Bank of America,BAC
+37,US,Exxon Mobil,XOM
+38,US,Chevron Corp.,CVX
+39,US,Caterpillar Inc.,CAT
+40,US,Deere & Company,DE
+41,US,Eli Lilly,LLY
+42,US,UnitedHealth Group,UNH
+43,US,AbbVie Inc.,ABBV
+44,US,SPDR S&P 500 ETF Trust,SPY
+45,US,Invesco QQQ Trust,QQQ
+46,US,SPDR Dow Jones Industrial ETF,DIA
+47,US,Vanguard Total Stock Market ETF,VTI
+48,US,iShares Russell 2000 ETF,IWM
+49,US,Technology Select Sector SPDR,XLK
+50,US,Financial Select Sector SPDR,XLF
+51,US,Energy Select Sector SPDR,XLE
+52,US,iShares Semiconductor ETF,SOXX
+53,US,VanEck Semiconductor ETF,SMH
+54,US,SPDR Gold Shares,GLD
+55,US,VanEck Gold Miners ETF,GDX
+56,US,United States Oil Fund,USO
+57,US,ARK Innovation ETF,ARKK
+58,US,SPDR S&P Biotech ETF,XBI
+59,US,Invesco Solar ETF,TAN
+60,US,iShares MSCI Emerging Markets ETF,EEM
 61,US,General Motors,GM
 62,US,Crown Castle,CCI
 63,US,AT&T,T
