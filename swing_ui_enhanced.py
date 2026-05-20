@@ -72,20 +72,23 @@ st.title("📈 Swing Trading Entry Screener (11 Indicators)")
 # ================== INDICATOR FUNCTIONS ==================
 
 def add_basic_indicators(df):
-    """Add EMA50, EMA200, MACD, RSI"""
+    """Add EMA20, EMA50, MACD, RSI (faster for 2–3 day swings)"""
     if df.empty or len(df) < 50:
         return df
 
     df = df.copy()
 
+    # Faster EMAs for swing
+    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
-    df['EMA200'] = df['Close'].ewm(span=200, adjust=False).mean()
 
+    # MACD (keep standard, but we'll use histogram/slope)
     exp1 = df['Close'].ewm(span=12, adjust=False).mean()
     exp2 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = exp1 - exp2
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
+    # RSI 14
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
@@ -96,7 +99,7 @@ def add_basic_indicators(df):
 
 
 def add_extra_indicators(df):
-    """Add ATR, ADX, Volume, Support, Pullback, MACD Histogram"""
+    """Add ATR, ADX, Volume, Support, Pullback, MACD Histogram, ATR%"""
     if df.empty or len(df) < 50:
         return df
 
@@ -104,12 +107,13 @@ def add_extra_indicators(df):
 
     # ===== ATR =====
     df['H-L'] = df['High'] - df['Low']
-    df['H-Cp'] = abs(df['High'] - df['Close'].shift())
-    df['L-Cp'] = abs(df['Low'] - df['Close'].shift())
+    df['H-Cp'] = (df['High'] - df['Close'].shift()).abs()
+    df['L-Cp'] = (df['Low'] - df['Close'].shift()).abs()
     df['TR'] = df[['H-L', 'H-Cp', 'L-Cp']].max(axis=1)
     df['ATR'] = df['TR'].rolling(14).mean()
+    df['ATR_Pct'] = (df['ATR'] / df['Close']) * 100  # volatility %
 
-    # ===== ADX =====
+    # ===== ADX (kept, but not over-weighted) =====
     df['UpMove'] = df['High'] - df['High'].shift()
     df['DownMove'] = df['Low'].shift() - df['Low']
     df['+DM'] = np.where((df['UpMove'] > df['DownMove']) & (df['UpMove'] > 0), df['UpMove'], 0)
@@ -122,7 +126,7 @@ def add_extra_indicators(df):
 
     di_sum = df['+DI14'] + df['-DI14']
     di_sum_safe = di_sum.replace(0, np.nan)
-    df['DX'] = 100 * abs(df['+DI14'] - df['-DI14']) / di_sum_safe
+    df['DX'] = 100 * (df['+DI14'] - df['-DI14']).abs() / di_sum_safe
     df['ADX'] = df['DX'].rolling(14).mean()
 
     # ===== VOLUME =====
@@ -135,16 +139,14 @@ def add_extra_indicators(df):
     swing_safe = df['Swing_Low_20'].replace(0, np.nan)
     df['Distance_to_Support'] = ((df['Close'] - df['Swing_Low_20']) / swing_safe) * 100
 
-    # ===== PULLBACK TO EMA =====
-    ema_safe = df['EMA50'].replace(0, np.nan)
-    df['Distance_to_EMA50'] = ((df['Close'] - df['EMA50']) / ema_safe) * 100
+    # ===== PULLBACK TO EMA20 (faster mean) =====
+    ema_safe = df['EMA20'].replace(0, np.nan)
+    df['Distance_to_EMA20'] = ((df['Close'] - df['EMA20']) / ema_safe) * 100
 
     # ===== MACD HISTOGRAM =====
     df['MACD_H'] = df['MACD'] - df['MACD_Signal']
 
-    # Fill NaN values
     df = df.bfill().ffill().fillna(0)
-
     return df
 
 
@@ -192,22 +194,17 @@ def check_support_strength(df):
 
 
 def check_macd_strength(df):
-    """Check if MACD histogram is growing"""
+    """Check if MACD histogram is turning up and above zero"""
     if len(df) < 5:
         return False
 
     try:
-        last = df.iloc[-1]
-        prev = df.iloc[-2]
-        prev2 = df.iloc[-3]
+        last3 = df['MACD_H'].tail(3)
+        if last3.isna().any():
+            return False
 
-        hist_now = last.get('MACD_H', last['MACD'] - last['MACD_Signal'])
-        hist_prev = prev.get('MACD_H', prev['MACD'] - prev['MACD_Signal'])
-        hist_prev2 = prev2.get('MACD_H', prev2['MACD'] - prev2['MACD_Signal'])
-
-        is_growing = hist_now > hist_prev > hist_prev2
-
-        return is_growing and hist_now > 0
+        # Increasing and above zero
+        return last3.iloc[-1] > last3.iloc[-2] > last3.iloc[-3] and last3.iloc[-1] > 0
     except:
         return False
 
@@ -231,40 +228,37 @@ def check_market_context():
 
 
 def enhanced_signal(df):
-    """Generate enhanced trading signals - 11 indicators with tiered logic"""
+    """Generate swing trading signals tuned for 2–3 day, 3–4% targets"""
     if df.empty or len(df) < 50:
         return "HOLD", "Insufficient data"
 
     try:
         last = df.iloc[-1]
-        prev = df.iloc[-2]
 
-        # ===== 5 URGENT CONDITIONS =====
+        # ===== URGENT CONDITIONS (core engine) =====
         urgent = {
-            "Trend Up (EMA50>EMA200)": float(last['EMA50']) > float(last['EMA200']),
-            "MACD Bullish": float(last['MACD']) > float(last['MACD_Signal']),
-            "ADX>20": float(last['ADX']) > 20,
-            "Volume >1.0x": float(last.get('Volume_Ratio', 0)) > 1.0,
-            "Support <5%": float(last.get('Distance_to_Support', 100)) < 5.0
+            "Uptrend (EMA20>EMA50)": float(last['EMA20']) > float(last['EMA50']),
+            "MACD Histogram Up": check_macd_strength(df),
+            "Volume >1.3x": float(last.get('Volume_Ratio', 0)) > 1.3,
+            "Near Support (<3%)": float(last.get('Distance_to_Support', 100)) < 3.0,
+            "Breakout (5-day high)": float(last['Close']) > float(df['High'].tail(5).max()),
+            "ATR%>1.5": float(last.get('ATR_Pct', 0)) > 1.5
         }
 
-        # ===== 2 SECONDARY CONDITIONS =====
+        # ===== SECONDARY CONDITIONS =====
         secondary = {
             "RSI<70": float(last['RSI']) < 70,
-            "Pullback Entry": (float(last.get('Distance_to_EMA50', 0)) >= -2.0) and \
-                              (float(last.get('Distance_to_EMA50', 0)) <= 2.0)
+            "Pullback to EMA20": -2.5 <= float(last.get('Distance_to_EMA20', 0)) <= 2.5
         }
 
-        # ===== 4 BONUS CONDITIONS =====
+        # ===== BONUS CONDITIONS =====
         divergence_present = detect_divergence(df)
         support_strength = check_support_strength(df)
-        macd_strong = check_macd_strength(df)
         market_bullish, market_msg = check_market_context()
 
         bonus = {
             "Bullish Divergence": divergence_present,
             "Strong Support (2+ touches)": support_strength >= 2,
-            "MACD Histogram Growing": macd_strong,
             "Market Context Bullish": market_bullish
         }
 
@@ -272,22 +266,44 @@ def enhanced_signal(df):
         secondary_count = sum(secondary.values())
         bonus_count = sum(bonus.values())
 
-        # ===== TIERED SIGNAL LOGIC =====
-        if urgent_count >= 5 and secondary_count >= 2 and bonus_count >= 2:
-            reason = f"✓ All 5 Urgent + 2 Secondary + 2 Bonus | {market_msg}"
+        bonus_reasons = [k for k, v in bonus.items() if v]
+        urgent_reasons = [k for k, v in urgent.items() if v]
+        secondary_reasons = [k for k, v in secondary.items() if v]
+
+        # ===== TIERED LOGIC (more realistic for swings) =====
+        # Strong Buy: high momentum + volatility + structure
+        if urgent_count >= 4 and secondary_count >= 2 and bonus_count >= 1:
+            reason = (
+                f"Strong Buy | Urgent: {', '.join(urgent_reasons[:4])} | "
+                f"Secondary: {', '.join(secondary_reasons)} | "
+                f"Bonus: {', '.join(bonus_reasons)} | {market_msg}"
+            )
             return "STRONG BUY", reason
 
-        elif urgent_count >= 4 and secondary_count >= 2 and bonus_count >= 1:
-            reason = f"✓ All 4 Urgent + 2 Secondary + 1 Bonus | {market_msg}"
+        # Potential Buy: good setup, missing 1–2 confirmations
+        if urgent_count >= 3 and secondary_count >= 1:
+            reason = (
+                f"Potential Buy | Urgent: {', '.join(urgent_reasons)} | "
+                f"Secondary: {', '.join(secondary_reasons)} | "
+                f"Bonus: {', '.join(bonus_reasons)} | {market_msg}"
+            )
             return "POTENTIAL BUY", reason
 
-        elif urgent_count >= 4 and secondary_count >= 1:
-            reason = f"✓ All 4 Urgent + 1 Secondary | {market_msg}"
+        # Moderate Buy: structure ok, but weaker momentum/volatility
+        if urgent_count >= 2 and secondary_count >= 1:
+            reason = (
+                f"Moderate Buy | Urgent: {', '.join(urgent_reasons)} | "
+                f"Secondary: {', '.join(secondary_reasons)} | "
+                f"Bonus: {', '.join(bonus_reasons)} | {market_msg}"
+            )
             return "MODERATE BUY", reason
 
-        else:
-            reason = f"Urgent: {urgent_count}/5, Secondary: {secondary_count}/2, Bonus: {bonus_count}/4"
-            return "HOLD", reason
+        reason = (
+            f"HOLD | Urgent: {urgent_count}/{len(urgent)}, "
+            f"Secondary: {secondary_count}/{len(secondary)}, "
+            f"Bonus: {bonus_count}/{len(bonus)} | {market_msg}"
+        )
+        return "HOLD", reason
 
     except Exception as e:
         return "ERROR", str(e)
@@ -326,43 +342,67 @@ def fetch_safe(ticker):
 
 
 def score_signal(row):
-    """Score signals for ranking"""
+    """Score each stock 0–100 based on swing‑trading quality"""
+
     score = 0
 
+    # --- Signal strength ---
     if row['Enhanced Signal'] == 'STRONG BUY':
-        score += 20
+        score += 40
     elif row['Enhanced Signal'] == 'POTENTIAL BUY':
-        score += 15
+        score += 25
     elif row['Enhanced Signal'] == 'MODERATE BUY':
-        score += 10
+        score += 15
 
-    try:
-        if isinstance(row['Volume_Ratio'], (int, float)) and row['Volume_Ratio'] > 2.0:
-            score += 4
-        elif isinstance(row['Volume_Ratio'], (int, float)) and row['Volume_Ratio'] > 1.5:
-            score += 2
-    except:
-        pass
+    # --- Volume confirmation ---
+    vr = row.get('Volume Ratio', 0)
+    if isinstance(vr, (int, float)):
+        if vr > 2.0:
+            score += 15
+        elif vr > 1.5:
+            score += 10
+        elif vr > 1.2:
+            score += 5
 
-    try:
-        if isinstance(row['Distance_to_Support'], (int, float)):
-            if row['Distance_to_Support'] < 1.0:
-                score += 3
-            elif row['Distance_to_Support'] < 2.0:
-                score += 2
-    except:
-        pass
+    # --- Volatility (ATR%) ---
+    atrp = row.get('ATR %', 0)
+    if isinstance(atrp, (int, float)):
+        if atrp > 3:
+            score += 15
+        elif atrp > 2:
+            score += 10
+        elif atrp > 1.5:
+            score += 5
 
-    try:
-        if isinstance(row['ADX'], (int, float)):
-            if row['ADX'] > 35:
-                score += 3
-            elif row['ADX'] > 25:
-                score += 1
-    except:
-        pass
+    # --- Support proximity ---
+    ds = row.get('Distance to Support', 0)
+    if isinstance(ds, (int, float)):
+        if ds < 1:
+            score += 10
+        elif ds < 2:
+            score += 7
+        elif ds < 3:
+            score += 5
 
-    return score
+    # --- ADX trend strength ---
+    adx = row.get('ADX', 0)
+    if isinstance(adx, (int, float)):
+        if adx > 35:
+            score += 10
+        elif adx > 25:
+            score += 5
+
+    return min(score, 100)
+
+def rating_from_score(score):
+    if score >= 85:
+        return "A+ (High Probability)"
+    elif score >= 70:
+        return "A (Strong Setup)"
+    elif score >= 55:
+        return "B (Decent)"
+    else:
+        return "C (Weak)"
 
 
 def highlight_signal(val):
@@ -466,19 +506,22 @@ if st.session_state.watchlist:
         results.append({
             'Ticker': ticker,
             'Company Name': ticker_to_name.get(ticker, "-"),
-            'Enhanced Signal': signal,
+            'Enhanced Signal': signal,  # <— add this
             'Signal': signal,
-            'Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
             'Current Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
-            'RSI': round(safe(last.get('RSI')), 1) if pd.notna(last.get('RSI')) else "-",
-            'Volume_Ratio': round(safe(last.get('Volume_Ratio')), 2) if pd.notna(last.get('Volume_Ratio')) else "-",
-            'Distance_to_Support': round(safe(last.get('Distance_to_Support')), 2) if pd.notna(
-                last.get('Distance_to_Support')) else "-",
             'Entry Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
-            'Target (2%)': round(safe(last.get('Close')) * 1.02, 2) if pd.notna(last.get('Close')) else "-",
-            'Target (3%)': round(safe(last.get('Close')) * 1.03, 2) if pd.notna(last.get('Close')) else "-",
+            'Stop Loss (Support)': round(safe(last.get('Swing_Low_20')) * 0.98, 2) if pd.notna(
+                last.get('Swing_Low_20')) else "-",
+            'Stop Loss (ATR)': round(safe(last.get('Close')) - (safe(last.get('ATR')) * 1.5), 2)
+            if pd.notna(last.get('Close')) and pd.notna(last.get('ATR')) else "-",
+            'Target 2%': round(safe(last.get('Close')) * 1.02, 2) if pd.notna(last.get('Close')) else "-",
+            'Target 3%': round(safe(last.get('Close')) * 1.03, 2) if pd.notna(last.get('Close')) else "-",
             'RSI': round(safe(last.get('RSI')), 1) if pd.notna(last.get('RSI')) else "-",
             'ADX': round(safe(last.get('ADX')), 2) if pd.notna(last.get('ADX')) else "-",
+            'Volume Ratio': round(safe(last.get('Volume_Ratio')), 2) if pd.notna(last.get('Volume_Ratio')) else "-",
+            'Distance to Support': round(safe(last.get('Distance_to_Support')), 2)
+            if pd.notna(last.get('Distance_to_Support')) else "-",
+            'ATR %': round(safe(last.get('ATR_Pct')), 2) if pd.notna(last.get('ATR_Pct')) else "-",
             'Score': 0,
             'Reason': reason
         })
@@ -491,6 +534,7 @@ if st.session_state.watchlist:
 
     df_results = pd.DataFrame(results)
     df_results['Score'] = df_results.apply(score_signal, axis=1)
+    df_results['Rating'] = df_results['Score'].apply(rating_from_score)
 
     # STRONG BUY
     strong = df_results[df_results['Enhanced Signal'] == 'STRONG BUY'].sort_values('Score', ascending=False)
@@ -499,11 +543,15 @@ if st.session_state.watchlist:
     if not strong.empty:
         st.balloons()
         st.success("✅ Perfect setup - All conditions aligned!")
-        display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Price']
+        display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Score', 'Rating']
         st.dataframe(
-            strong[['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target (2%)', 'Target (3%)']].head(10),
-            use_container_width=True
+            strong[
+                ['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target 2%', 'Target 3%', 'Score',
+                 'Rating']],
+            use_container_width=True,
+            height=600
         )
+
         st.warning(f"📌 Take top 3-5 by score")
     else:
         st.info("No strong buy signals currently")
@@ -515,9 +563,13 @@ if st.session_state.watchlist:
         if not potential.empty:
             st.info("Good setup - Missing 1 bonus filter")
             st.dataframe(
-                potential[['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target (2%)', 'Target (3%)']].head(10),
-                use_container_width=True
+                potential[
+                    ['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target 2%', 'Target 3%',
+                     'Score', 'Rating']],
+                use_container_width=True,
+                height=600
             )
+
         else:
             st.info("No potential buy signals")
 
@@ -527,11 +579,14 @@ if st.session_state.watchlist:
     with st.expander(f"⚠️ MODERATE BUY ({len(moderate)}) — 4 Urgent + 1 Secondary"):
         if not moderate.empty:
             st.warning("Decent setup - Missing secondary confirmations")
-            display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Price']
+            display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Score', 'Rating', 'Score', 'Rating']
             st.dataframe(
-                moderate[['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target (2%)', 'Target (3%)']].head(10),
-                use_container_width=True
+                moderate[['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target 2%', 'Target 3%',
+                          'Score', 'Rating']],
+                use_container_width=True,
+                height=600
             )
+
         else:
             st.info("No moderate buy signals")
 
@@ -703,6 +758,6 @@ for label, df_bucket in buckets.items():
             d["Current Price"] = d["Current Price"].map(lambda x: f"{x:.2f}")
             d["52-Week High"] = d["52-Week High"].map(lambda x: f"{x:.2f}")
             d["Drop %"] = d["Drop %"].map(lambda x: f"{x:.2f}%")
-            st.dataframe(d, use_container_width=True)
+            st.dataframe(d, use_container_width=True, height=700)
 
 st.caption("Live data cached. Clear cache or rerun to refresh.")
