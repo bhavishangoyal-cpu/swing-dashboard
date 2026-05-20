@@ -19,15 +19,23 @@ def load_watchlist():
 
 
 def save_watchlist(watchlist):
-    """Save tickers to CSV with company names"""
-    # Load existing data first
+    """Save tickers to CSV preserving all columns"""
     csv_path = "watchlist.csv"
+
+    # Load existing data
     if os.path.exists(csv_path):
         existing_df = pd.read_csv(csv_path)
-        existing_dict = dict(zip(existing_df['Yahoo Ticker'],
-                                 existing_df.get('Company Name', existing_df['Yahoo Ticker'])))
+        # Keep only tickers that still exist
+        existing_df = existing_df[existing_df['Yahoo Ticker'].isin(watchlist)]
+        # Add any new tickers
+        new_tickers = [t for t in watchlist if t not in existing_df['Yahoo Ticker'].values]
+        if new_tickers:
+            new_rows = pd.DataFrame({'Yahoo Ticker': new_tickers})
+            existing_df = pd.concat([existing_df, new_rows], ignore_index=True)
+        existing_df.to_csv("watchlist.csv", index=False)
     else:
-        existing_dict = {}
+        df = pd.DataFrame({'Yahoo Ticker': watchlist})
+        df.to_csv("watchlist.csv", index=False)
 
     # Add new tickers with their names (or ticker as placeholder)
     company_names = [existing_dict.get(ticker, ticker) for ticker in watchlist]
@@ -41,15 +49,19 @@ def save_watchlist(watchlist):
 def load_ticker_to_name():
     """Load ticker to company name mapping"""
     csv_path = "watchlist.csv"
+    ticker_dict = {}
+
     if os.path.exists(csv_path):
         df = pd.read_csv(csv_path)
-        # Handle missing Company Name
         if 'Company Name' in df.columns:
-            return dict(zip(df['Yahoo Ticker'], df['Company Name']))
+            for idx, row in df.iterrows():
+                ticker = row['Yahoo Ticker'].strip().upper()
+                company = row.get('Company Name', ticker)
+                ticker_dict[ticker] = company if pd.notna(company) else ticker
         else:
-            # If Company Name doesn't exist, use ticker as name
-            return dict(zip(df['Yahoo Ticker'], df['Yahoo Ticker']))
-    return {}
+            ticker_dict = {t.strip().upper(): t.strip().upper() for t in df['Yahoo Ticker']}
+
+    return ticker_dict
 
 # ================== PAGE CONFIG ==================
 
@@ -231,9 +243,9 @@ def enhanced_signal(df):
         urgent = {
             "Trend Up (EMA50>EMA200)": float(last['EMA50']) > float(last['EMA200']),
             "MACD Bullish": float(last['MACD']) > float(last['MACD_Signal']),
-            "ADX>25": float(last['ADX']) > 25,
-            "Volume >1.5x": float(last.get('Volume_Ratio', 0)) > 1.5,
-            "Support <2%": float(last.get('Distance_to_Support', 100)) < 2.0
+            "ADX>20": float(last['ADX']) > 20,
+            "Volume >1.0x": float(last.get('Volume_Ratio', 0)) > 1.0,
+            "Support <5%": float(last.get('Distance_to_Support', 100)) < 5.0
         }
 
         # ===== 2 SECONDARY CONDITIONS =====
@@ -265,12 +277,12 @@ def enhanced_signal(df):
             reason = f"✓ All 5 Urgent + 2 Secondary + 2 Bonus | {market_msg}"
             return "STRONG BUY", reason
 
-        elif urgent_count >= 5 and secondary_count >= 2 and bonus_count >= 1:
-            reason = f"✓ All 5 Urgent + 2 Secondary + 1 Bonus | {market_msg}"
+        elif urgent_count >= 4 and secondary_count >= 2 and bonus_count >= 1:
+            reason = f"✓ All 4 Urgent + 2 Secondary + 1 Bonus | {market_msg}"
             return "POTENTIAL BUY", reason
 
-        elif urgent_count >= 5 and secondary_count >= 1:
-            reason = f"✓ All 5 Urgent + 1 Secondary | {market_msg}"
+        elif urgent_count >= 4 and secondary_count >= 1:
+            reason = f"✓ All 4 Urgent + 1 Secondary | {market_msg}"
             return "MODERATE BUY", reason
 
         else:
@@ -455,12 +467,18 @@ if st.session_state.watchlist:
             'Ticker': ticker,
             'Company Name': ticker_to_name.get(ticker, "-"),
             'Enhanced Signal': signal,
-            'Price': round(safe(last['Close']), 2) if pd.notna(last['Close']) else "-",
-            'RSI': round(safe(last.get('RSI', np.nan)), 1) if pd.notna(last.get('RSI', np.nan)) else "-",
-            'Volume_Ratio': round(safe(last['Volume_Ratio']), 2) if pd.notna(last.get('Volume_Ratio')) else "-",
-            'Distance_to_Support': round(safe(last['Distance_to_Support']), 2) if pd.notna(
+            'Signal': signal,
+            'Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
+            'Current Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
+            'RSI': round(safe(last.get('RSI')), 1) if pd.notna(last.get('RSI')) else "-",
+            'Volume_Ratio': round(safe(last.get('Volume_Ratio')), 2) if pd.notna(last.get('Volume_Ratio')) else "-",
+            'Distance_to_Support': round(safe(last.get('Distance_to_Support')), 2) if pd.notna(
                 last.get('Distance_to_Support')) else "-",
-            'ADX': round(safe(last.get('ADX', np.nan)), 2) if pd.notna(last.get('ADX', np.nan)) else "-",
+            'Entry Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
+            'Target (2%)': round(safe(last.get('Close')) * 1.02, 2) if pd.notna(last.get('Close')) else "-",
+            'Target (3%)': round(safe(last.get('Close')) * 1.03, 2) if pd.notna(last.get('Close')) else "-",
+            'RSI': round(safe(last.get('RSI')), 1) if pd.notna(last.get('RSI')) else "-",
+            'ADX': round(safe(last.get('ADX')), 2) if pd.notna(last.get('ADX')) else "-",
             'Score': 0,
             'Reason': reason
         })
@@ -481,9 +499,9 @@ if st.session_state.watchlist:
     if not strong.empty:
         st.balloons()
         st.success("✅ Perfect setup - All conditions aligned!")
-        display_cols = ['Ticker', 'Company Name', 'Price', 'RSI', 'Volume_Ratio', 'Distance_to_Support', 'ADX', 'Score']
+        display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Price']
         st.dataframe(
-            strong[display_cols].head(10).style.map(highlight_signal, subset=['Enhanced Signal']),
+            strong[['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target (2%)', 'Target (3%)']].head(10),
             use_container_width=True
         )
         st.warning(f"📌 Take top 3-5 by score")
@@ -493,13 +511,11 @@ if st.session_state.watchlist:
     # POTENTIAL BUY
     potential = df_results[df_results['Enhanced Signal'] == 'POTENTIAL BUY'].sort_values('Score', ascending=False)
 
-    with st.expander(f"💡 POTENTIAL BUY ({len(potential)}) — 5 Urgent + 2 Secondary + 1 Bonus"):
+    with st.expander(f"💡 POTENTIAL BUY ({len(potential)})"):
         if not potential.empty:
             st.info("Good setup - Missing 1 bonus filter")
-            display_cols = ['Ticker', 'Company Name', 'Price', 'RSI', 'Volume_Ratio', 'Distance_to_Support', 'ADX',
-                            'Score']
             st.dataframe(
-                potential[display_cols].head(10).style.map(highlight_signal, subset=['Enhanced Signal']),
+                potential[['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target (2%)', 'Target (3%)']].head(10),
                 use_container_width=True
             )
         else:
@@ -508,13 +524,12 @@ if st.session_state.watchlist:
     # MODERATE BUY
     moderate = df_results[df_results['Enhanced Signal'] == 'MODERATE BUY'].sort_values('Score', ascending=False)
 
-    with st.expander(f"⚠️ MODERATE BUY ({len(moderate)}) — 5 Urgent + 1 Secondary"):
+    with st.expander(f"⚠️ MODERATE BUY ({len(moderate)}) — 4 Urgent + 1 Secondary"):
         if not moderate.empty:
             st.warning("Decent setup - Missing secondary confirmations")
-            display_cols = ['Ticker', 'Company Name', 'Price', 'RSI', 'Volume_Ratio', 'Distance_to_Support', 'ADX',
-                            'Score']
+            display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Price']
             st.dataframe(
-                moderate[display_cols].head(10).style.map(highlight_signal, subset=['Enhanced Signal']),
+                moderate[['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target (2%)', 'Target (3%)']].head(10),
                 use_container_width=True
             )
         else:
