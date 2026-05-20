@@ -546,7 +546,7 @@ if st.session_state.watchlist:
         display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Score', 'Rating']
         st.dataframe(
             strong[
-                ['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target 2%', 'Target 3%', 'Score',
+                ['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price', 'Target 2%', 'Target 3%', 'Score',
                  'Rating']],
             use_container_width=True,
             height=600
@@ -564,7 +564,7 @@ if st.session_state.watchlist:
             st.info("Good setup - Missing 1 bonus filter")
             st.dataframe(
                 potential[
-                    ['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target 2%', 'Target 3%',
+                    ['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price', 'Target 2%', 'Target 3%',
                      'Score', 'Rating']],
                 use_container_width=True,
                 height=600
@@ -579,7 +579,7 @@ if st.session_state.watchlist:
     with st.expander(f"⚠️ MODERATE BUY ({len(moderate)}) — 4 Urgent + 1 Secondary"):
         if not moderate.empty:
             st.warning("Decent setup - Missing secondary confirmations")
-            display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Score', 'Rating', 'Score', 'Rating']
+            display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Score', 'Rating', 'Score', 'Rating']
             st.dataframe(
                 moderate[['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Entry Price', 'Target 2%', 'Target 3%',
                           'Score', 'Rating']],
