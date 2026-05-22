@@ -228,57 +228,57 @@ def check_market_context():
 
 
 def enhanced_signal(df):
-    """Generate swing trading signals tuned for 2–3 day, 3–4% targets"""
+    """Generate swing signals - TWO types: Pullback OR Breakout"""
     if df.empty or len(df) < 50:
         return "HOLD", "Insufficient data"
 
     try:
         last = df.iloc[-1]
+        prev = df.iloc[-2]
 
-        # ===== URGENT CONDITIONS (core engine) =====
-        urgent = {
-            "Uptrend (EMA20>EMA50)": float(last['EMA20']) > float(last['EMA50']),
-            "MACD Histogram Up": check_macd_strength(df),
-            "Volume >1.3x": float(last.get('Volume_Ratio', 0)) > 1.3,
-            "Near Support (<3%)": float(last.get('Distance_to_Support', 100)) < 3.0,
-            "Breakout (5-day high)": float(last['Close']) > float(df['High'].tail(5).max()),
-            "ATR%>1.5": float(last.get('ATR_Pct', 0)) > 1.5
-        }
-
-        # ===== SECONDARY CONDITIONS =====
-        secondary = {
-            "RSI<70": float(last['RSI']) < 70,
-            "Pullback to EMA20": -2.5 <= float(last.get('Distance_to_EMA20', 0)) <= 2.5
-        }
-
-        # ===== BONUS CONDITIONS =====
-        divergence_present = detect_divergence(df)
-        support_strength = check_support_strength(df)
+        # ===== COMMON CONDITIONS (both setups) =====
+        trend_up = float(last['EMA20']) > float(last['EMA50'])
+        volume_good = float(last.get('Volume_Ratio', 0)) > 1.2
+        volatility_good = float(last.get('ATR_Pct', 0)) > 1.5
         market_bullish, market_msg = check_market_context()
 
-        bonus = {
-            "Bullish Divergence": divergence_present,
-            "Strong Support (2+ touches)": support_strength >= 2,
-            "Market Context Bullish": market_bullish
-        }
+        # ===== TYPE 1: PULLBACK BUY =====
+        pullback_to_ema = -3.0 <= float(last.get('Distance_to_EMA20', 0)) <= 0.0
+        rsi_not_hot = float(last['RSI']) < 60
 
-        urgent_count = sum(urgent.values())
-        secondary_count = sum(secondary.values())
-        bonus_count = sum(bonus.values())
+        pullback_conditions = [trend_up, pullback_to_ema, rsi_not_hot, volume_good, volatility_good]
+        pullback_count = sum(pullback_conditions)
 
-        bonus_reasons = [k for k, v in bonus.items() if v]
-        urgent_reasons = [k for k, v in urgent.items() if v]
-        secondary_reasons = [k for k, v in secondary.items() if v]
+        # ===== TYPE 2: BREAKOUT BUY =====
+        breakout = float(last['Close']) > float(df['High'].tail(5).max())
+        rsi_not_extreme = float(last['RSI']) < 75
 
-        # ===== TIERED LOGIC (more realistic for swings) =====
-        # Strong Buy: high momentum + volatility + structure
-        if urgent_count >= 4 and secondary_count >= 2 and bonus_count >= 1:
-            reason = (
-                f"Strong Buy | Urgent: {', '.join(urgent_reasons[:4])} | "
-                f"Secondary: {', '.join(secondary_reasons)} | "
-                f"Bonus: {', '.join(bonus_reasons)} | {market_msg}"
-            )
-            return "STRONG BUY", reason
+        breakout_conditions = [trend_up, breakout, volume_good, volatility_good, rsi_not_extreme]
+        breakout_count = sum(breakout_conditions)
+
+        # ===== SIGNAL LOGIC (SIMPLIFIED) =====
+
+        # PULLBACK signals
+        if pullback_count >= 5 and market_bullish:
+            return "STRONG BUY (Pullback)", f"Perfect pullback setup | {market_msg}"
+        elif pullback_count >= 4:
+            return "POTENTIAL BUY (Pullback)", f"Good pullback near EMA20 | {market_msg}"
+
+        # BREAKOUT signals
+        if breakout_count >= 5 and market_bullish:
+            return "STRONG BUY (Breakout)", f"Perfect breakout setup | {market_msg}"
+        elif breakout_count >= 4:
+            return "POTENTIAL BUY (Breakout)", f"Breakout above 5-day high | {market_msg}"
+
+        # MODERATE - either type weak
+        if pullback_count >= 3 or breakout_count >= 3:
+            return "MODERATE BUY", f"Weak setup - missing confirmations | {market_msg}"
+
+        return "HOLD", f"No setup | Pullback:{pullback_count}/5 | Breakout:{breakout_count}/5 | {market_msg}"
+
+    except Exception as e:
+        return "ERROR", str(e)
+
 
         # Potential Buy: good setup, missing 1–2 confirmations
         if urgent_count >= 3 and secondary_count >= 1:
@@ -342,57 +342,45 @@ def fetch_safe(ticker):
 
 
 def score_signal(row):
-    """Score each stock 0–100 based on swing‑trading quality"""
-
+    """Score each setup 0–100"""
     score = 0
 
-    # --- Signal strength ---
-    if row['Enhanced Signal'] == 'STRONG BUY':
-        score += 40
-    elif row['Enhanced Signal'] == 'POTENTIAL BUY':
-        score += 25
-    elif row['Enhanced Signal'] == 'MODERATE BUY':
-        score += 15
+    signal = str(row.get('Enhanced Signal', ''))
 
-    # --- Volume confirmation ---
+    # Signal type base score
+    if 'STRONG BUY' in signal:
+        score += 50
+    elif 'POTENTIAL BUY' in signal:
+        score += 35
+    elif 'MODERATE BUY' in signal:
+        score += 20
+
+    # Volume bonus
     vr = row.get('Volume Ratio', 0)
     if isinstance(vr, (int, float)):
         if vr > 2.0:
-            score += 15
+            score += 20
         elif vr > 1.5:
-            score += 10
-        elif vr > 1.2:
-            score += 5
-
-    # --- Volatility (ATR%) ---
-    atrp = row.get('ATR %', 0)
-    if isinstance(atrp, (int, float)):
-        if atrp > 3:
             score += 15
-        elif atrp > 2:
+        elif vr > 1.2:
             score += 10
-        elif atrp > 1.5:
+
+    # Volatility bonus
+    atr_pct = row.get('ATR %', 0)
+    if isinstance(atr_pct, (int, float)):
+        if atr_pct > 3:
+            score += 15
+        elif atr_pct > 2:
+            score += 10
+        elif atr_pct > 1.5:
             score += 5
 
-    # --- Support proximity ---
-    ds = row.get('Distance to Support', 0)
-    if isinstance(ds, (int, float)):
-        if ds < 1:
-            score += 10
-        elif ds < 2:
-            score += 7
-        elif ds < 3:
-            score += 5
-
-    # --- ADX trend strength ---
-    adx = row.get('ADX', 0)
-    if isinstance(adx, (int, float)):
-        if adx > 35:
-            score += 10
-        elif adx > 25:
-            score += 5
+    # Risk management bonus
+    if isinstance(row.get('Stop Loss (ATR)'), (int, float)):
+        score += 5
 
     return min(score, 100)
+
 
 def rating_from_score(score):
     if score >= 85:
@@ -506,21 +494,14 @@ if st.session_state.watchlist:
         results.append({
             'Ticker': ticker,
             'Company Name': ticker_to_name.get(ticker, "-"),
-            'Enhanced Signal': signal,  # <— add this
-            'Signal': signal,
+            'Enhanced Signal': signal,
             'Current Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
             'Entry Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
-            'Stop Loss (Support)': round(safe(last.get('Swing_Low_20')) * 0.98, 2) if pd.notna(
-                last.get('Swing_Low_20')) else "-",
             'Stop Loss (ATR)': round(safe(last.get('Close')) - (safe(last.get('ATR')) * 1.5), 2)
             if pd.notna(last.get('Close')) and pd.notna(last.get('ATR')) else "-",
             'Target 2%': round(safe(last.get('Close')) * 1.02, 2) if pd.notna(last.get('Close')) else "-",
             'Target 3%': round(safe(last.get('Close')) * 1.03, 2) if pd.notna(last.get('Close')) else "-",
-            'RSI': round(safe(last.get('RSI')), 1) if pd.notna(last.get('RSI')) else "-",
-            'ADX': round(safe(last.get('ADX')), 2) if pd.notna(last.get('ADX')) else "-",
             'Volume Ratio': round(safe(last.get('Volume_Ratio')), 2) if pd.notna(last.get('Volume_Ratio')) else "-",
-            'Distance to Support': round(safe(last.get('Distance_to_Support')), 2)
-            if pd.notna(last.get('Distance_to_Support')) else "-",
             'ATR %': round(safe(last.get('ATR_Pct')), 2) if pd.notna(last.get('ATR_Pct')) else "-",
             'Score': 0,
             'Reason': reason
@@ -537,58 +518,53 @@ if st.session_state.watchlist:
     df_results['Rating'] = df_results['Score'].apply(rating_from_score)
 
     # STRONG BUY
-    strong = df_results[df_results['Enhanced Signal'] == 'STRONG BUY'].sort_values('Score', ascending=False)
+    strong = df_results[df_results['Enhanced Signal'].str.contains('STRONG BUY', na=False)].sort_values('Score',
+                                                                                                        ascending=False)
 
-    st.subheader(f"🚀 STRONG BUY ({len(strong)}) — 5 Urgent + 2 Secondary + 2 Bonus")
+    st.subheader(f"🚀 STRONG BUY ({len(strong)})")
     if not strong.empty:
         st.balloons()
-        st.success("✅ Perfect setup - All conditions aligned!")
-        display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Price', 'Score', 'Rating']
+        st.success("✅ Perfect setup!")
         st.dataframe(
-            strong[
-                ['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price', 'Target 2%', 'Target 3%', 'Score',
-                 'Rating']],
+            strong[['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price',
+                    'Stop Loss (ATR)', 'Target 2%', 'Target 3%', 'Score']],
             use_container_width=True,
             height=600
         )
-
-        st.warning(f"📌 Take top 3-5 by score")
     else:
-        st.info("No strong buy signals currently")
+        st.info("No strong buy signals")
 
     # POTENTIAL BUY
-    potential = df_results[df_results['Enhanced Signal'] == 'POTENTIAL BUY'].sort_values('Score', ascending=False)
+    potential = df_results[df_results['Enhanced Signal'].str.contains('POTENTIAL BUY', na=False)].sort_values('Score',
+                                                                                                              ascending=False)
 
     with st.expander(f"💡 POTENTIAL BUY ({len(potential)})"):
         if not potential.empty:
-            st.info("Good setup - Missing 1 bonus filter")
+            st.info("Good setup - 4/5 conditions met")
             st.dataframe(
-                potential[
-                    ['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price', 'Target 2%', 'Target 3%',
-                     'Score', 'Rating']],
+                potential[['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price',
+                           'Stop Loss (ATR)', 'Target 2%', 'Target 3%', 'Score']],
                 use_container_width=True,
                 height=600
             )
-
         else:
-            st.info("No potential buy signals")
+            st.info("No potential signals")
 
     # MODERATE BUY
-    moderate = df_results[df_results['Enhanced Signal'] == 'MODERATE BUY'].sort_values('Score', ascending=False)
+    moderate = df_results[df_results['Enhanced Signal'].str.contains('MODERATE BUY', na=False)].sort_values('Score',
+                                                                                                            ascending=False)
 
-    with st.expander(f"⚠️ MODERATE BUY ({len(moderate)}) — 4 Urgent + 1 Secondary"):
+    with st.expander(f"⚠️ MODERATE BUY ({len(moderate)})"):
         if not moderate.empty:
-            st.warning("Decent setup - Missing secondary confirmations")
-            display_cols = ['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Score', 'Rating', 'Score', 'Rating']
+            st.warning("Weak setup - 3/5 conditions met")
             st.dataframe(
-                moderate[['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price', 'Target 2%', 'Target 3%',
-                          'Score', 'Rating']],
+                moderate[['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price',
+                          'Stop Loss (ATR)', 'Target 2%', 'Target 3%', 'Score']],
                 use_container_width=True,
                 height=600
             )
-
         else:
-            st.info("No moderate buy signals")
+            st.info("No moderate signals")
 
     # Summary
     st.divider()

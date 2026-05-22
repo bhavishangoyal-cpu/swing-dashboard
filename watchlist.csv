@@ -1,63 +1,32 @@
-Company Name,Yahoo Ticker
-NVIDIA Corporation,NVDA
-Microsoft Corporation,MSFT
-Apple Inc.,AAPL
-Amazon.com Inc.,AMZN
-Meta Platforms Inc.,META
-Alphabet Inc.,GOOGL
-Tesla Inc.,TSLA
-Advanced Micro Devices,AMD
-Broadcom Inc.,AVGO
-Micron Technology,MU
-ASML Holding,ASML
-Lam Research,LRCX
-KLA Corporation,KLAC
-Palantir Technologies,PLTR
-CrowdStrike Holdings,CRWD
-Snowflake Inc.,SNOW
-Datadog Inc.,DDOG
-ServiceNow,NOW
-Salesforce Inc.,CRM
-Zscaler Inc.,ZS
-Cloudflare Inc.,NET
-Palo Alto Networks,PANW
-Super Micro Computer,SMCI
-Carvana Co.,CVNA
-Coinbase Global,COIN
-Robinhood Markets,HOOD
-Roku Inc.,ROKU
-Shopify Inc.,SHOP
-Affirm Holdings,AFRM
-Marathon Digital Holdings,MARA
-CleanSpark Inc.,CLSK
-Iris Energy Ltd.,IREN
-NIO Inc.,NIO
-JPMorgan Chase,JPM
-Goldman Sachs,GS
-Bank of America,BAC
-Exxon Mobil,XOM
-Chevron Corp.,CVX
-Caterpillar Inc.,CAT
-Deere & Company,DE
-Eli Lilly,LLY
-UnitedHealth Group,UNH
-AbbVie Inc.,ABBV
-SPDR S&P 500 ETF Trust,SPY
-Invesco QQQ Trust,QQQ
-SPDR Dow Jones Industrial ETF,DIA
-Vanguard Total Stock Market ETF,VTI
-iShares Russell 2000 ETF,IWM
-Technology Select Sector SPDR,XLK
-Financial Select Sector SPDR,XLF
-Energy Select Sector SPDR,XLE
-iShares Semiconductor ETF,SOXX
-VanEck Semiconductor ETF,SMH
-SPDR Gold Shares,GLD
-VanEck Gold Miners ETF,GDX
-United States Oil Fund,USO
-ARK Innovation ETF,ARKK
-SPDR S&P Biotech ETF,XBI
-Invesco Solar ETF,TAN
-iShares MSCI Emerging Markets ETF,EEM
-AST SpaceMobile Inc,ASTS
-Rocket Lab Corp,RKLB
+Rank,Country,Company Name,Yahoo Ticker
+1,US,NVIDIA Corporation,NVDA
+2,US,Microsoft Corporation,MSFT
+3,US,Apple Inc.,AAPL
+4,US,Amazon.com Inc.,AMZN
+5,US,Meta Platforms Inc.,META
+6,US,Alphabet Inc.,GOOGL
+7,US,Advanced Micro Devices,AMD
+8,US,Broadcom Inc.,AVGO
+9,US,ASML Holding,ASML
+10,US,Lam Research,LRCX
+11,US,KLA Corporation,KLAC
+12,US,ServiceNow,NOW
+13,US,Salesforce Inc.,CRM
+14,US,Palo Alto Networks,PANW
+15,US,CrowdStrike Holdings,CRWD
+16,US,JPMorgan Chase,JPM
+17,US,Goldman Sachs,GS
+18,US,Exxon Mobil,XOM
+19,US,Chevron Corp.,CVX
+20,US,Caterpillar Inc.,CAT
+21,US,Deere & Company,DE
+22,US,Eli Lilly,LLY
+23,US,UnitedHealth Group,UNH
+24,US,AbbVie Inc.,ABBV
+25,US,SPDR S&P 500 ETF Trust,SPY
+26,US,Invesco QQQ Trust,QQQ
+27,US,Vanguard Total Stock Market ETF,VTI
+28,US,Technology Select Sector SPDR,XLK
+29,US,VanEck Semiconductor ETF,SMH
+30,US,Financial Select Sector SPDR,XLF
+31,US,Energy Select Sector SPDR,XLE
