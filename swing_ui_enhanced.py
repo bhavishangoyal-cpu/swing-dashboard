@@ -243,8 +243,8 @@ def enhanced_signal(df):
         market_bullish, market_msg = check_market_context()
 
         # ===== TYPE 1: PULLBACK BUY =====
-        pullback_to_ema = -3.0 <= float(last.get('Distance_to_EMA20', 0)) <= 0.0
-        rsi_not_hot = float(last['RSI']) < 60
+        pullback_to_ema = -5.0 <= float(last.get('Distance_to_EMA20', 0)) <= 0.0
+        rsi_not_hot = float(last['RSI']) < 65
 
         pullback_conditions = [trend_up, pullback_to_ema, rsi_not_hot, volume_good, volatility_good]
         pullback_count = sum(pullback_conditions)
@@ -259,19 +259,19 @@ def enhanced_signal(df):
         # ===== SIGNAL LOGIC (SIMPLIFIED) =====
 
         # PULLBACK signals
-        if pullback_count >= 5 and market_bullish:
+        if pullback_count >= 4 and market_bullish:
             return "STRONG BUY (Pullback)", f"Perfect pullback setup | {market_msg}"
-        elif pullback_count >= 4:
+        elif pullback_count >= 3:
             return "POTENTIAL BUY (Pullback)", f"Good pullback near EMA20 | {market_msg}"
 
         # BREAKOUT signals
-        if breakout_count >= 5 and market_bullish:
+        if breakout_count >= 4 and market_bullish:
             return "STRONG BUY (Breakout)", f"Perfect breakout setup | {market_msg}"
-        elif breakout_count >= 4:
+        elif breakout_count >= 3:
             return "POTENTIAL BUY (Breakout)", f"Breakout above 5-day high | {market_msg}"
 
         # MODERATE - either type weak
-        if pullback_count >= 3 or breakout_count >= 3:
+        if pullback_count >= 2 or breakout_count >= 3:
             return "MODERATE BUY", f"Weak setup - missing confirmations | {market_msg}"
 
         return "HOLD", f"No setup | Pullback:{pullback_count}/5 | Breakout:{breakout_count}/5 | {market_msg}"
