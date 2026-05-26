@@ -65,8 +65,8 @@ def load_ticker_to_name():
 
 # ================== PAGE CONFIG ==================
 
-st.set_page_config(page_title="Swing Trading Enhanced Dashboard", layout="wide")
-st.title("📈 Swing Trading Entry Screener (11 Indicators)")
+st.set_page_config(page_title="Goel's Strategy", layout="wide")
+st.title("📈 Goel's Strategy")
 
 
 # ================== INDICATOR FUNCTIONS ==================
@@ -226,6 +226,17 @@ def check_market_context():
     except:
         return True, "Market check unavailable"
 
+
+def get_indicator_status(conditions_dict):
+    """Convert conditions dict to visual string"""
+    if not conditions_dict:
+        return ""
+
+    status = ""
+    for condition_name, is_met in conditions_dict.items():
+        symbol = "✓" if is_met else "✗"
+        status += f"{symbol} {condition_name}\n"
+    return status
 
 def enhanced_signal(df):
     """Generate swing signals - TWO types: Pullback OR Breakout"""
@@ -469,13 +480,19 @@ if st.session_state.watchlist:
             results.append({
                 'Ticker': ticker,
                 'Company Name': ticker_to_name.get(ticker, "-"),
-                'Price': '-',
-                'Enhanced Signal': 'NO DATA',
-                'RSI': '-',
-                'Volume_Ratio': '-',
-                'Distance_to_Support': '-',
-                'ADX': '-',
-                'Score': 0
+                'Enhanced Signal': signal,
+                'Current Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
+                'Entry Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
+                'Stop Loss (ATR)': round(safe(last.get('Close')) - (safe(last.get('ATR')) * 1.5), 2)
+                if pd.notna(last.get('Close')) and pd.notna(last.get('ATR')) else "-",
+                'Target 2%': round(safe(last.get('Close')) * 1.02, 2) if pd.notna(last.get('Close')) else "-",
+                'Target 3%': round(safe(last.get('Close')) * 1.03, 2) if pd.notna(last.get('Close')) else "-",
+                'Volume Ratio': round(safe(last.get('Volume_Ratio')), 2) if pd.notna(last.get('Volume_Ratio')) else "-",
+                'ATR %': round(safe(last.get('ATR_Pct')), 2) if pd.notna(last.get('ATR_Pct')) else "-",
+                'Score': 0,
+                'Reason': reason,
+                'Pullback Conditions': pullback_cond,
+                'Breakout Conditions': breakout_cond
             })
             progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
             time.sleep(0.2)
