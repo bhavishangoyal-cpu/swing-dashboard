@@ -63,6 +63,7 @@ def load_ticker_to_name():
 
     return ticker_dict
 
+
 # ================== PAGE CONFIG ==================
 
 st.set_page_config(page_title="Goel's Strategy", layout="wide")
@@ -227,25 +228,59 @@ def check_market_context():
         return True, "Market check unavailable"
 
 
-def get_indicator_status(conditions_dict):
-    """Convert conditions dict to visual string"""
-    if not conditions_dict:
-        return ""
+@st.cache_data(ttl=300)
+def check_vix_level():
+    """Check current VIX level and categorize"""
+    try:
+        vix_data = yf.download('^VIX', period='1d', progress=False)
 
-    status = ""
-    for condition_name, is_met in conditions_dict.items():
-        symbol = "✓" if is_met else "✗"
-        status += f"{symbol} {condition_name}\n"
-    return status
+        if isinstance(vix_data.columns, pd.MultiIndex):
+            vix_data.columns = [col[0] if isinstance(col, tuple) else col for col in vix_data.columns]
+
+        vix_value = float(vix_data['Close'].iloc[-1])
+
+        # Categorize VIX
+        if vix_value < 15:
+            category = "Very Calm"
+            condition = "Too slow, hard to make 2-3%"
+            trading_ok = False
+            color = "blue"
+        elif vix_value < 20:
+            category = "Normal/Healthy"
+            condition = "IDEAL for swing trading ✅"
+            trading_ok = True
+            color = "green"
+        elif vix_value < 30:
+            category = "Worried"
+            condition = "Getting dangerous - Only take STRONG BUY"
+            trading_ok = "selective"
+            color = "orange"
+        elif vix_value < 40:
+            category = "Scared"
+            condition = "Very risky, avoid trading"
+            trading_ok = False
+            color = "red"
+        else:
+            category = "Panic"
+            condition = "Market crash, STOP trading"
+            trading_ok = False
+            color = "darkred"
+
+        return vix_value, category, condition, trading_ok, color
+    except:
+        return None, "Unavailable", "Could not fetch VIX", None, "gray"
+
 
 def enhanced_signal(df):
-    """Generate swing signals - TWO types: Pullback OR Breakout"""
+    """Generate swing signals - TWO types: Pullback OR Breakout with VIX consideration"""
     if df.empty or len(df) < 50:
-        return "HOLD", "Insufficient data"
+        return "HOLD", "Insufficient data", {}, {}, "N/A"
 
     try:
         last = df.iloc[-1]
-        prev = df.iloc[-2]
+
+        # ===== GET VIX INFO =====
+        vix_value, vix_category, vix_condition, trading_ok, vix_color = check_vix_level()
 
         # ===== COMMON CONDITIONS (both setups) =====
         trend_up = float(last['EMA20']) > float(last['EMA50'])
@@ -267,57 +302,39 @@ def enhanced_signal(df):
         breakout_conditions = [trend_up, breakout, volume_good, volatility_good, rsi_not_extreme]
         breakout_count = sum(breakout_conditions)
 
-        # ===== SIGNAL LOGIC (SIMPLIFIED) =====
+        # Format VIX string
+        vix_str = f"{vix_value:.1f}" if vix_value else "N/A"
 
-        # PULLBACK signals
+        # ===== SIGNAL LOGIC WITH VIX CONSIDERATION =====
+
+        # If VIX too high, downgrade signals
+        if vix_value and vix_value > 30:
+            # Only STRONG signals when VIX high
+            if pullback_count >= 4 and market_bullish:
+                return "STRONG BUY (Pullback)", f"Perfect pullback setup | VIX: {vix_str} ({vix_category})", {}, {}, vix_str
+            elif breakout_count >= 4 and market_bullish:
+                return "STRONG BUY (Breakout)", f"Perfect breakout setup | VIX: {vix_str} ({vix_category})", {}, {}, vix_str
+            else:
+                return "HOLD", f"⚠️ VIX too high ({vix_str}), SKIP trading | Pullback:{pullback_count}/5 | Breakout:{breakout_count}/5", {}, {}, vix_str
+
+        # Normal VIX conditions
         if pullback_count >= 4 and market_bullish:
-            return "STRONG BUY (Pullback)", f"Perfect pullback setup | {market_msg}"
+            return "STRONG BUY (Pullback)", f"Perfect pullback setup | VIX: {vix_str} ({vix_category})", {}, {}, vix_str
         elif pullback_count >= 3:
-            return "POTENTIAL BUY (Pullback)", f"Good pullback near EMA20 | {market_msg}"
+            return "POTENTIAL BUY (Pullback)", f"Good pullback near EMA20 | VIX: {vix_str} ({vix_category})", {}, {}, vix_str
 
-        # BREAKOUT signals
         if breakout_count >= 4 and market_bullish:
-            return "STRONG BUY (Breakout)", f"Perfect breakout setup | {market_msg}"
+            return "STRONG BUY (Breakout)", f"Perfect breakout setup | VIX: {vix_str} ({vix_category})", {}, {}, vix_str
         elif breakout_count >= 3:
-            return "POTENTIAL BUY (Breakout)", f"Breakout above 5-day high | {market_msg}"
+            return "POTENTIAL BUY (Breakout)", f"Breakout above 5-day high | VIX: {vix_str} ({vix_category})", {}, {}, vix_str
 
-        # MODERATE - either type weak
         if pullback_count >= 2 or breakout_count >= 3:
-            return "MODERATE BUY", f"Weak setup - missing confirmations | {market_msg}"
+            return "MODERATE BUY", f"Weak setup - missing confirmations | VIX: {vix_str} ({vix_category})", {}, {}, vix_str
 
-        return "HOLD", f"No setup | Pullback:{pullback_count}/5 | Breakout:{breakout_count}/5 | {market_msg}"
-
-    except Exception as e:
-        return "ERROR", str(e)
-
-
-        # Potential Buy: good setup, missing 1–2 confirmations
-        if urgent_count >= 3 and secondary_count >= 1:
-            reason = (
-                f"Potential Buy | Urgent: {', '.join(urgent_reasons)} | "
-                f"Secondary: {', '.join(secondary_reasons)} | "
-                f"Bonus: {', '.join(bonus_reasons)} | {market_msg}"
-            )
-            return "POTENTIAL BUY", reason
-
-        # Moderate Buy: structure ok, but weaker momentum/volatility
-        if urgent_count >= 2 and secondary_count >= 1:
-            reason = (
-                f"Moderate Buy | Urgent: {', '.join(urgent_reasons)} | "
-                f"Secondary: {', '.join(secondary_reasons)} | "
-                f"Bonus: {', '.join(bonus_reasons)} | {market_msg}"
-            )
-            return "MODERATE BUY", reason
-
-        reason = (
-            f"HOLD | Urgent: {urgent_count}/{len(urgent)}, "
-            f"Secondary: {secondary_count}/{len(secondary)}, "
-            f"Bonus: {bonus_count}/{len(bonus)} | {market_msg}"
-        )
-        return "HOLD", reason
+        return "HOLD", f"No setup | VIX: {vix_str} ({vix_category}) | Pullback:{pullback_count}/5 | Breakout:{breakout_count}/5", {}, {}, vix_str
 
     except Exception as e:
-        return "ERROR", str(e)
+        return "ERROR", str(e), {}, {}, "N/A"
 
 
 @st.cache_data(ttl=300)
@@ -404,25 +421,6 @@ def rating_from_score(score):
         return "C (Weak)"
 
 
-def highlight_signal(val):
-    """Color code signals"""
-    val = str(val).upper()
-    if "STRONG BUY" in val:
-        return "background-color: #c6ffbf; font-weight:700; color:green;"
-    elif "MODERATE BUY" in val:
-        return "background-color: #d4f7c4; color:green;"
-    elif "POTENTIAL BUY" in val:
-        return "background-color: #e6ffe6; color:green;"
-    elif "HOLD" in val:
-        return "background-color: #fff3e0;"
-    elif "NO DATA" in val or "ERROR" in val:
-        return "background-color: #f8d7da; color:red;"
-    return ""
-
-
-# ================== STREAMLIT UI - SWING SCREENER ==================
-
-# Initialize session state
 # ================== STREAMLIT UI - SWING SCREENER ==================
 
 # Initialize session state
@@ -431,20 +429,37 @@ if 'watchlist' not in st.session_state:
 
 ticker_to_name = load_ticker_to_name()
 
-# ===== MARKET STATUS (ADD THIS) =====
+# ===== MARKET STATUS =====
 st.markdown("---")
-spy_bullish, spy_msg = check_market_context()
 
-if spy_bullish:
-    st.success(f"📈 {spy_msg}")
-else:
-    st.error(f"📉 {spy_msg}")
+col1, col2 = st.columns(2)
+
+with col1:
+    spy_bullish, spy_msg = check_market_context()
+    if spy_bullish:
+        st.success(f"📈 {spy_msg}")
+    else:
+        st.error(f"📉 {spy_msg}")
+
+with col2:
+    vix_value, vix_category, vix_condition, trading_ok, vix_color = check_vix_level()
+
+    if vix_value:
+        st.write(f"**VIX Level: {vix_value:.2f}**")
+        st.write(f"**Category:** {vix_category}")
+        st.write(f"**Condition:** {vix_condition}")
+
+        if trading_ok == True:
+            st.success("✅ IDEAL CONDITIONS - Trade normally")
+        elif trading_ok == "selective":
+            st.warning("⚠️ CAUTION - Only take STRONG BUY signals")
+        else:
+            st.error("❌ AVOID TRADING - Wait for better conditions")
+    else:
+        st.info("VIX data unavailable")
 
 st.markdown("---")
 # ===== END MARKET STATUS =====
-
-
-ticker_to_name = load_ticker_to_name()
 
 # Auto-refresh every 3 minutes
 st_autorefresh(interval=180000)
@@ -480,19 +495,17 @@ if st.session_state.watchlist:
             results.append({
                 'Ticker': ticker,
                 'Company Name': ticker_to_name.get(ticker, "-"),
-                'Enhanced Signal': signal,
-                'Current Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
-                'Entry Price': round(safe(last.get('Close')), 2) if pd.notna(last.get('Close')) else "-",
-                'Stop Loss (ATR)': round(safe(last.get('Close')) - (safe(last.get('ATR')) * 1.5), 2)
-                if pd.notna(last.get('Close')) and pd.notna(last.get('ATR')) else "-",
-                'Target 2%': round(safe(last.get('Close')) * 1.02, 2) if pd.notna(last.get('Close')) else "-",
-                'Target 3%': round(safe(last.get('Close')) * 1.03, 2) if pd.notna(last.get('Close')) else "-",
-                'Volume Ratio': round(safe(last.get('Volume_Ratio')), 2) if pd.notna(last.get('Volume_Ratio')) else "-",
-                'ATR %': round(safe(last.get('ATR_Pct')), 2) if pd.notna(last.get('ATR_Pct')) else "-",
+                'Enhanced Signal': 'NO DATA',
+                'Current Price': '-',
+                'Entry Price': '-',
+                'Stop Loss (ATR)': '-',
+                'Target 2%': '-',
+                'Target 3%': '-',
+                'Volume Ratio': '-',
+                'ATR %': '-',
                 'Score': 0,
-                'Reason': reason,
-                'Pullback Conditions': pullback_cond,
-                'Breakout Conditions': breakout_cond
+                'Reason': 'No data',
+                'VIX Level': '-'
             })
             progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
             time.sleep(0.2)
@@ -500,7 +513,7 @@ if st.session_state.watchlist:
 
         df = add_basic_indicators(df)
         df = add_extra_indicators(df)
-        signal, reason = enhanced_signal(df)
+        signal, reason, pullback_cond, breakout_cond, vix_level = enhanced_signal(df)
         last = df.iloc[-1]
 
 
@@ -521,7 +534,10 @@ if st.session_state.watchlist:
             'Volume Ratio': round(safe(last.get('Volume_Ratio')), 2) if pd.notna(last.get('Volume_Ratio')) else "-",
             'ATR %': round(safe(last.get('ATR_Pct')), 2) if pd.notna(last.get('ATR_Pct')) else "-",
             'Score': 0,
-            'Reason': reason
+            'Reason': reason,
+            'VIX Level': vix_level,
+            'Pullback Conditions': pullback_cond,
+            'Breakout Conditions': breakout_cond
         })
 
         progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
@@ -544,7 +560,7 @@ if st.session_state.watchlist:
         st.success("✅ Perfect setup!")
         st.dataframe(
             strong[['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price',
-                    'Stop Loss (ATR)', 'Target 2%', 'Target 3%', 'Score']],
+                    'Stop Loss (ATR)', 'Target 2%', 'Target 3%', 'VIX Level', 'Score', 'Rating']],
             use_container_width=True,
             height=600
         )
@@ -560,7 +576,7 @@ if st.session_state.watchlist:
             st.info("Good setup - 4/5 conditions met")
             st.dataframe(
                 potential[['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price',
-                           'Stop Loss (ATR)', 'Target 2%', 'Target 3%', 'Score']],
+                           'Stop Loss (ATR)', 'Target 2%', 'Target 3%', 'VIX Level', 'Score', 'Rating']],
                 use_container_width=True,
                 height=600
             )
@@ -576,7 +592,7 @@ if st.session_state.watchlist:
             st.warning("Weak setup - 3/5 conditions met")
             st.dataframe(
                 moderate[['Ticker', 'Company Name', 'Enhanced Signal', 'Current Price', 'Entry Price',
-                          'Stop Loss (ATR)', 'Target 2%', 'Target 3%', 'Score']],
+                          'Stop Loss (ATR)', 'Target 2%', 'Target 3%', 'VIX Level', 'Score', 'Rating']],
                 use_container_width=True,
                 height=600
             )
@@ -585,21 +601,33 @@ if st.session_state.watchlist:
 
     # Summary
     st.divider()
-    st.subheader("📊 11 Indicators Breakdown")
+    st.subheader("📊 Strategy Summary")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("STRONG BUY", len(strong))
     with col2:
         st.metric("POTENTIAL BUY", len(potential))
     with col3:
         st.metric("MODERATE BUY", len(moderate))
+    with col4:
+        total_signals = len(strong) + len(potential) + len(moderate)
+        st.metric("TOTAL SIGNALS", total_signals)
 
     st.info("""
     **11 Indicators Used:**
-    🔴 **5 URGENT:** EMA Trend + MACD Cross + ADX + Volume + Support
-    🟡 **2 SECONDARY:** RSI + Pullback Entry
-    💚 **4 BONUS:** Divergence + Support Strength + MACD Histogram + Market Context
+
+    🔴 **TREND:** EMA20 > EMA50
+    🔴 **MOMENTUM:** MACD Histogram > 0
+    🔴 **STRENGTH:** ADX > 25
+    🔴 **VOLUME:** Volume > 1.2x average
+    🔴 **VOLATILITY:** ATR% > 1.5%
+    🔴 **ENTRY QUALITY:** Pullback to EMA20 OR Breakout above 5-day high
+    🔴 **SUPPORT:** Distance to Support < 3%
+    🔴 **SUPPORT STRENGTH:** 2+ touches on support
+    🔴 **REVERSAL:** Bullish Divergence
+    🔴 **RSI:** < 60 (Pullback) or < 75 (Breakout)
+    🔴 **MARKET:** SPY Bullish + VIX < 30
     """)
 
 else:
