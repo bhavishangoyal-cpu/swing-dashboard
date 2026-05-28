@@ -983,19 +983,38 @@ def fetch_news_flag(ticker):
 
 
 def validate_data_timing(df):
-    """Validate that last 2 rows are consecutive trading days"""
+    """Validate that last 2 rows are real trading days with valid timestamps."""
     if df.empty or len(df) < 2:
         return False
 
-    today_date = df.index[-1]
-    yesterday_date = df.index[-2]
-
-    date_diff = (today_date - yesterday_date).days
-
-    if date_diff > 3:
+    # Ensure index is datetime
+    try:
+        df.index = pd.to_datetime(df.index)
+    except:
         return False
 
-    return True
+    # Get last two valid timestamps
+    dates = df.index[-2:]
+
+    # If any timestamp is NaT → invalid
+    if dates.isna().any():
+        return False
+
+    today_date = dates[-1]
+    yesterday_date = dates[-2]
+
+    # Ensure both are datetime objects
+    if not isinstance(today_date, pd.Timestamp) or not isinstance(yesterday_date, pd.Timestamp):
+        return False
+
+    # Calculate difference in days
+    date_diff = (today_date.normalize() - yesterday_date.normalize()).days
+
+    # Accept 1–3 days difference (weekends/holidays)
+    if 1 <= date_diff <= 3:
+        return True
+
+    return False
 
 
 def calculate_gap_metrics(df, market_bullish):
