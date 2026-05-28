@@ -789,7 +789,7 @@ st.caption("Live data cached. Clear cache or rerun to refresh.")
 
 # ================== HELPER FUNCTIONS ==================
 
-def load_watchlist():
+def load_watchlist2():
     """Load tickers from CSV"""
     csv_path = "watchlist.csv"
     if os.path.exists(csv_path):
@@ -800,7 +800,7 @@ def load_watchlist():
 
 def load_ticker_to_name():
     """Load ticker to company name mapping"""
-    csv_path = "watchlist.csv"
+    csv_path = "watchlist2.csv"
     ticker_dict = {}
 
     if os.path.exists(csv_path):
@@ -1151,8 +1151,8 @@ def get_gap_signal_FIXED(metrics, market_bullish, vix_value):
 
 # ================== STREAMLIT UI ==================
 
-if 'watchlist' not in st.session_state:
-    st.session_state.watchlist = load_watchlist()
+if 'watchlist2' not in st.session_state:
+    st.session_state.watchlist2 = load_watchlist2()
 
 ticker_to_name = load_ticker_to_name()
 
@@ -1197,8 +1197,8 @@ st.markdown("---")
 st_autorefresh(interval=120000)
 
 # Analysis
-if st.session_state.watchlist:
-    st.info(f"🔍 Scanning {len(st.session_state.watchlist)} tickers for gap ups...")
+if st.session_state.watchlist2:
+    st.info(f"🔍 Scanning {len(st.session_state.watchlist2)} tickers for gap ups...")
 
     results = []
     progress_bar = st.progress(0)
@@ -1207,13 +1207,13 @@ if st.session_state.watchlist:
     market_bullish, _, _ = check_market_context()
     vix_value, _, _ = check_vix_level()
 
-    for idx, ticker in enumerate(st.session_state.watchlist):
+    for idx, ticker in enumerate(st.session_state.watchlist2):
         status_text.write(f"⏳ Checking {ticker}...")
 
         df = fetch_safe(ticker)
 
         if df.empty:
-            progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
+            progress_bar.progress((idx + 1) / len(st.session_state.watchlist2))
             time.sleep(0.1)
             continue
 
@@ -1258,7 +1258,7 @@ if st.session_state.watchlist:
                 'News': news_flag
             })
 
-        progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
+        progress_bar.progress((idx + 1) / len(st.session_state.watchlist2))
         time.sleep(0.1)
 
     progress_bar.empty()
@@ -1449,5 +1449,5 @@ if st.session_state.watchlist:
         st.info("Check back tomorrow at 9:30 AM for morning scan.")
 
 else:
-    st.info("📝 Watchlist is empty. Add tickers to watchlist.csv to begin.")
+    st.info("📝 Watchlist2 is empty. Add tickers to watchlist2.csv to begin.")
 

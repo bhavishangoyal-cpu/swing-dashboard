@@ -1,0 +1,130 @@
+Ticker,Company
+AAPL,Apple Inc.
+MSFT,Microsoft Corporation
+NVDA,NVIDIA Corporation
+AMZN,Amazon.com Inc.
+GOOGL,Alphabet Inc. Class A
+GOOG,Alphabet Inc. Class C
+META,Meta Platforms Inc.
+TSLA,Tesla Inc.
+BRK.B,Berkshire Hathaway Inc.
+JPM,JPMorgan Chase & Co.
+V,Visa Inc.
+MA,Mastercard Incorporated
+LLY,Eli Lilly and Company
+AVGO,Broadcom Inc.
+UNH,UnitedHealth Group
+XOM,Exxon Mobil Corporation
+COST,Costco Wholesale Corporation
+WMT,Walmart Inc.
+HD,Home Depot Inc.
+PG,Procter & Gamble
+JNJ,Johnson & Johnson
+NFLX,Netflix Inc.
+ABBV,AbbVie Inc.
+BAC,Bank of America
+KO,Coca-Cola Company
+PEP,PepsiCo Inc.
+MRK,Merck & Co.
+CVX,Chevron Corporation
+AMD,Advanced Micro Devices
+ORCL,Oracle Corporation
+CRM,Salesforce Inc.
+CSCO,Cisco Systems Inc.
+ADBE,Adobe Inc.
+IBM,International Business Machines
+QCOM,QUALCOMM Incorporated
+INTC,Intel Corporation
+GE,GE Aerospace
+CAT,Caterpillar Inc.
+MCD,McDonald's Corporation
+DIS,Walt Disney Company
+LIN,Linde plc
+NOW,ServiceNow Inc.
+AMGN,Amgen Inc.
+TXN,Texas Instruments
+GS,Goldman Sachs Group
+PLTR,Palantir Technologies
+PANW,Palo Alto Networks
+UBER,Uber Technologies
+SHOP,Shopify Inc.
+MU,Micron Technology
+TMO,Thermo Fisher Scientific
+AXP,American Express
+ISRG,Intuitive Surgical
+SPGI,S&P Global
+RTX,RTX Corporation
+BKNG,Booking Holdings
+BLK,BlackRock Inc.
+SYK,Stryker Corporation
+LOW,Lowe's Companies
+DE,Deere & Company
+PGR,Progressive Corporation
+LRCX,Lam Research
+ADP,Automatic Data Processing
+VRTX,Vertex Pharmaceuticals
+MDT,Medtronic plc
+GILD,Gilead Sciences
+HON,Honeywell International
+ETN,Eaton Corporation
+TJX,TJX Companies
+ADI,Analog Devices
+MMC,Marsh & McLennan
+C,Citigroup Inc.
+SCHW,Charles Schwab
+CMCSA,Comcast Corporation
+TMUS,T-Mobile US
+NKE,Nike Inc.
+SO,Southern Company
+DHR,Danaher Corporation
+FI,Fiserv Inc.
+MO,Altria Group
+BA,Boeing Company
+USB,U.S. Bancorp
+CB,Chubb Limited
+CI,Cigna Group
+ELV,Elevance Health
+REGN,Regeneron Pharmaceuticals
+APH,Amphenol Corporation
+CDNS,Cadence Design Systems
+SNPS,Synopsys Inc.
+KLAC,KLA Corporation
+MELI,MercadoLibre Inc.
+CRWD,CrowdStrike Holdings
+ABNB,Airbnb Inc.
+PYPL,PayPal Holdings
+MAR,Marriott International
+FDX,FedEx Corporation
+UPS,United Parcel Service
+GM,General Motors
+F,Ford Motor Company
+SPY,SPDR S&P 500 ETF Trust
+VOO,Vanguard S&P 500 ETF
+IVV,iShares Core S&P 500 ETF
+QQQ,Invesco QQQ Trust
+QQQM,Invesco NASDAQ 100 ETF
+VTI,Vanguard Total Stock Market ETF
+SCHB,Schwab U.S. Broad Market ETF
+IWM,iShares Russell 2000 ETF
+DIA,SPDR Dow Jones Industrial Average ETF
+XLK,Technology Select Sector SPDR Fund
+SMH,VanEck Semiconductor ETF
+SOXX,iShares Semiconductor ETF
+IYW,iShares U.S. Technology ETF
+BOTZ,Global X Robotics & AI ETF
+AIQ,Global X Artificial Intelligence ETF
+ARKK,ARK Innovation ETF
+VUG,Vanguard Growth ETF
+SCHG,Schwab U.S. Large-Cap Growth ETF
+MGK,Vanguard Mega Cap Growth ETF
+VTV,Vanguard Value ETF
+SCHD,Schwab U.S. Dividend Equity ETF
+JEPI,JPMorgan Equity Premium Income ETF
+XLF,Financial Select Sector SPDR Fund
+XLE,Energy Select Sector SPDR Fund
+XLV,Health Care Select Sector SPDR Fund
+XLI,Industrial Select Sector SPDR Fund
+XLY,Consumer Discretionary Select Sector SPDR Fund
+VNQ,Vanguard Real Estate ETF
+GLD,SPDR Gold Shares
+TLT,iShares 20+ Year Treasury Bond ETF
