@@ -820,8 +820,12 @@ def fetch_news_flag(ticker):
 
 
 
-
+#PROGRAM - 3 - GAPUP
 # ================== HELPER FUNCTIONS ==================
+import requests
+from bs4 import BeautifulSoup
+import json
+
 
 def load_watchlist():
     """Load tickers from CSV"""
@@ -859,158 +863,242 @@ def load_ticker_to_name():
 
 # ================== PAGE CONFIG ==================
 
-st.set_page_config(page_title="Daily Stock Scanner", layout="wide")
-st.title("📈 Daily Stock Scanner - 4-5% Movers")
+st.set_page_config(page_title="Predictive Day Trading", layout="wide")
+st.title("🔮 Predictive Day Trading Screener")
 
 st.markdown("""
-**Purpose:** Find QUALITY stocks moving 4-5% TODAY
+**PURPOSE:** Predict which stocks will move BIG TODAY (4-5%+)
 
-**Quality Filter:** Price > $5, Good volume, Tradeable
+**TIMING:** Run at market open or before (9:30 AM)
 
-**Signal:** Stocks with consistent 4-5% daily moves + volume
+**FACTORS:** Earnings + News + Technical + Volatility Signals
 
-**Best For:** Swing traders looking for steady daily gains
+**GOAL:** Identify stocks with HIGH probability of 4-5% move TODAY
+
+**PROFIT:** Enter at open, exit before close (day trading)
 """)
 
 
-# ================== FETCH & ANALYZE ==================
+# ================== DATA COLLECTION ==================
+
+@st.cache_data(ttl=300)
+def check_earnings_today(ticker):
+    """Check if stock has earnings today"""
+    try:
+        info = yf.Ticker(ticker).info
+
+        if 'earningsDate' in info:
+            earnings_date = info['earningsDate']
+            if isinstance(earnings_date, (int, float)):
+                earnings_date = datetime.fromtimestamp(earnings_date)
+            elif isinstance(earnings_date, str):
+                earnings_date = datetime.strptime(earnings_date, '%Y-%m-%d')
+
+            today = datetime.now().date()
+            earnings_today = earnings_date.date() == today
+
+            return earnings_today, earnings_date if earnings_today else None
+    except:
+        pass
+
+    return False, None
+
 
 @st.cache_data(ttl=600)
-def fetch_stock_data(ticker):
-    """Fetch stock data - today & yesterday"""
+def fetch_stock_info(ticker):
+    """Fetch stock info for analysis"""
     try:
-        # Get last 5 days
-        df = yf.download(ticker, period="5d", progress=False, auto_adjust=True)
+        info = yf.Ticker(ticker).info
+
+        return {
+            'price': info.get('currentPrice', 0),
+            'market_cap': info.get('marketCap', 0),
+            '52_week_high': info.get('fiftyTwoWeekHigh', 0),
+            '52_week_low': info.get('fiftyTwoWeekLow', 0),
+            'avg_volume': info.get('averageVolume', 0),
+            'pe_ratio': info.get('trailingPE', 0),
+            'sector': info.get('sector', 'Unknown'),
+            'dividend_yield': info.get('dividendYield', 0)
+        }
+    except:
+        return None
+
+
+@st.cache_data(ttl=600)
+def fetch_technical_data(ticker):
+    """Fetch technical data for prediction"""
+    try:
+        # Get last 60 days
+        df = yf.download(ticker, period="60d", progress=False, auto_adjust=True)
 
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
 
-        if df.empty or len(df) < 2:
+        if df is None or df.empty or len(df) < 10:
             return None
+
+        # Calculate metrics
+        df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+        df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
+        df['RSI'] = calculate_rsi(df['Close'], 14)
+        df['ATR'] = calculate_atr(df, 14)
+        df['ATR_Pct'] = (df['ATR'] / df['Close']) * 100
+        df['Volume_MA'] = df['Volume'].rolling(20).mean()
+        df['Volume_Ratio'] = df['Volume'] / df['Volume_MA']
 
         return df
     except:
         return None
 
 
-def analyze_stock(ticker, df):
-    """Analyze stock for 4-5% daily move"""
-    if df.empty or len(df) < 2:
-        return None
-
+def calculate_rsi(prices, period=14):
+    """Calculate RSI"""
     try:
-        today = df.iloc[-1]
-        yesterday = df.iloc[-2]
-
-        today_open = float(today.get('Open', 0))
-        today_high = float(today.get('High', 0))
-        today_close = float(today.get('Close', 0))
-        today_volume = float(today.get('Volume', 0))
-
-        yesterday_close = float(yesterday.get('Close', 0))
-        yesterday_volume = float(yesterday.get('Volume', 0))
-
-        # Basic checks
-        if today_open == 0 or yesterday_close == 0:
-            return None
-
-        # Calculate TODAY's move
-        today_move = ((today_close - today_open) / today_open) * 100
-        high_move = ((today_high - today_open) / today_open) * 100
-        close_to_yesterday = ((today_close - yesterday_close) / yesterday_close) * 100
-
-        # Volume
-        volume_ratio = (today_volume / yesterday_volume) if yesterday_volume > 0 else 0
-
-        # Volatility (ATR simple)
-        price_range = today_high - today_open
-
-        return {
-            'open': today_open,
-            'high': today_high,
-            'close': today_close,
-            'yesterday_close': yesterday_close,
-            'today_volume': today_volume,
-            'yesterday_volume': yesterday_volume,
-            'volume_ratio': volume_ratio,
-            'today_move': today_move,
-            'high_move': high_move,
-            'close_to_yesterday': close_to_yesterday,
-            'price_range': price_range
-        }
+        delta = prices.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
     except:
-        return None
+        return pd.Series([50] * len(prices))
 
 
-def get_signal(ticker, metrics):
-    """Simple signal: 4-5% move with volume"""
-    if not metrics:
-        return "ERROR", 0, "No data"
+def calculate_atr(df, period=14):
+    """Calculate ATR"""
+    try:
+        df = df.copy()
+        df['H-L'] = df['High'] - df['Low']
+        df['H-C'] = abs(df['High'] - df['Close'].shift())
+        df['L-C'] = abs(df['Low'] - df['Close'].shift())
+        df['TR'] = df[['H-L', 'H-C', 'L-C']].max(axis=1)
+        atr = df['TR'].rolling(period).mean()
+        return atr
+    except:
+        return pd.Series([0] * len(df))
 
-    close_move = metrics['close_to_yesterday']
-    high_move = metrics['high_move']
-    volume_ratio = metrics['volume_ratio']
+
+def predict_big_move(ticker, info, tech_df):
+    """PREDICT if stock will move big today"""
+    if info is None or tech_df is None:
+        return "ERROR", 0, "Missing data"
 
     score = 0
     reasons = []
 
-    # ===== TARGET: 4-5% MOVE =====
+    try:
+        # ===== FACTOR 1: TECHNICAL SETUP (Most important for day trading) =====
+        last = tech_df.iloc[-1]
 
-    # Perfect target (4-5%)
-    if 4 <= close_move <= 6:
-        score += 50
-        reasons.append(f"✅ Perfect: {close_move:.1f}% (TARGET!)")
-    # Close to target (3-7%)
-    elif 3 <= close_move <= 7:
-        score += 35
-        reasons.append(f"✅ Good: {close_move:.1f}% (near target)")
-    # Moderate (2-8%)
-    elif 2 <= close_move <= 8:
-        score += 20
-        reasons.append(f"👍 Moderate: {close_move:.1f}%")
-    # Too small
-    elif close_move < 2:
-        return "TOO SMALL", 0, f"Only {close_move:.1f}% - need 4%+"
-    # Too big (>8%)
-    elif close_move > 8:
-        score += 15
-        reasons.append(f"⚡ Big: {close_move:.1f}% (more than target)")
+        # Volatility
+        atr_pct = float(last.get('ATR_Pct', 0))
+        if atr_pct > 3:
+            score += 25
+            reasons.append(f"📊 High volatility: {atr_pct:.1f}% ATR")
+        elif atr_pct > 2:
+            score += 15
+            reasons.append(f"📊 Good volatility: {atr_pct:.1f}% ATR")
+        elif atr_pct > 1.5:
+            score += 8
+            reasons.append(f"📊 Normal volatility: {atr_pct:.1f}% ATR")
+        else:
+            reasons.append(f"⚠️ Low volatility: {atr_pct:.1f}% ATR")
 
-    # ===== VOLUME CONFIRMATION =====
-    if volume_ratio > 1.3:
-        score += 25
-        reasons.append(f"💪 Heavy volume: {volume_ratio:.1f}x")
-    elif volume_ratio > 1.0:
-        score += 15
-        reasons.append(f"📊 Good volume: {volume_ratio:.1f}x")
-    elif volume_ratio > 0.8:
-        score += 5
-        reasons.append(f"⚠️ Low volume: {volume_ratio:.1f}x")
-    else:
-        score -= 10
-        reasons.append(f"❌ Very low volume: {volume_ratio:.1f}x")
+        # Trend
+        close = float(last.get('Close', 0))
+        ema20 = float(last.get('EMA20', 0))
+        ema50 = float(last.get('EMA50', 0))
 
-    # ===== INTRADAY MOMENTUM =====
-    if high_move > close_move and high_move > 2:
-        score += 10
-        reasons.append(f"⬆️ Momentum: {high_move:.1f}% from open")
+        if close > ema20 > ema50:
+            score += 15
+            reasons.append("✅ Strong uptrend")
+        elif close < ema20 < ema50:
+            score += 5
+            reasons.append("⚠️ Downtrend (risky)")
+        else:
+            score += 8
+            reasons.append("➡️ Mixed trend")
 
-    final_score = min(max(score, 0), 100)
-    reason_text = " | ".join(reasons)
+        # RSI extremes (suggests move coming)
+        rsi = float(last.get('RSI', 50))
+        if rsi > 70:
+            score += 10
+            reasons.append(f"⬆️ Overbought RSI {rsi:.0f} (pullback or reversal)")
+        elif rsi < 30:
+            score += 10
+            reasons.append(f"⬇️ Oversold RSI {rsi:.0f} (bounce coming)")
+        else:
+            score += 5
+            reasons.append(f"↔️ RSI neutral {rsi:.0f}")
 
-    # Signal
-    if final_score >= 70:
-        signal = "✅ STRONG BUY"
-    elif final_score >= 55:
-        signal = "👍 GOOD BUY"
-    elif final_score >= 40:
-        signal = "🟡 MODERATE"
-    elif final_score >= 20:
-        signal = "👀 WATCH"
-    else:
-        signal = "SKIP"
+        # Volume trend
+        vol_ratio = float(last.get('Volume_Ratio', 0))
+        if vol_ratio > 1.5:
+            score += 15
+            reasons.append(f"💪 Volume spike: {vol_ratio:.1f}x")
+        elif vol_ratio > 1.2:
+            score += 10
+            reasons.append(f"📈 High volume: {vol_ratio:.1f}x")
+        else:
+            score += 5
+            reasons.append(f"📉 Normal volume: {vol_ratio:.1f}x")
 
-    return signal, final_score, reason_text
+        # ===== FACTOR 2: FUNDAMENTAL SETUP =====
+        price = info['price']
+
+        # Price near 52-week extremes (suggests volatility)
+        high_52w = info['52_week_high']
+        low_52w = info['52_week_low']
+
+        if high_52w > 0:
+            distance_to_high = ((high_52w - price) / high_52w) * 100
+            if distance_to_high < 5:
+                score += 15
+                reasons.append(f"🔥 Near 52-week high ({distance_to_high:.1f}%)")
+            elif distance_to_high > 30:
+                score += 12
+                reasons.append(f"🔵 Far from high ({distance_to_high:.1f}%) - room to run")
+
+        # Market cap (exclude microcaps)
+        market_cap = info['market_cap']
+        if market_cap > 1000000000:  # > $1B
+            score += 5
+            reasons.append("✅ Good market cap")
+        else:
+            score -= 10
+            reasons.append("❌ Small market cap - risky")
+
+        # ===== FACTOR 3: CATALYSTS =====
+        # Check for earnings
+        has_earnings, earnings_date = check_earnings_today(ticker)
+        if has_earnings:
+            score += 40
+            reasons.append("🔴 EARNINGS TODAY - Likely big move")
+
+        # ===== FACTOR 4: SECTOR MOMENTUM =====
+        sector = info['sector']
+        if sector and sector != 'Unknown':
+            reasons.append(f"📌 Sector: {sector}")
+
+        # ===== FINAL SCORE & SIGNAL =====
+        final_score = min(max(score, 0), 100)
+        reason_text = " | ".join(reasons)
+
+        if final_score >= 80:
+            signal = "🔥 HIGH PROBABILITY MOVER"
+        elif final_score >= 65:
+            signal = "⚡ LIKELY TO MOVE"
+        elif final_score >= 50:
+            signal = "👍 POSSIBLE MOVER"
+        elif final_score >= 35:
+            signal = "⚠️ RISKY"
+        else:
+            signal = "❌ SKIP"
+
+        return signal, final_score, reason_text
+
+    except Exception as e:
+        return "ERROR", 0, str(e)
 
 
 # ================== STREAMLIT UI ==================
@@ -1020,224 +1108,210 @@ if 'watchlist' not in st.session_state:
 
 ticker_to_name = load_ticker_to_name()
 
-# Status
+# ===== MARKET TIME =====
 st.markdown("---")
+
+now = datetime.now()
+market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.info(f"📊 Scanning: {len(st.session_state.watchlist)} stocks")
+    st.info(f"📊 Stocks: {len(st.session_state.watchlist)}")
 
 with col2:
-    st.info(f"🎯 Target: 4-5% daily move")
+    current_time = now.strftime("%H:%M")
+    if now < market_open:
+        time_until = int((market_open - now).total_seconds() / 60)
+        st.warning(f"⏰ Opens in {time_until} min")
+    elif now > market_close:
+        st.error("🔴 Market closed")
+    else:
+        st.success(f"🟢 OPEN ({current_time})")
 
 with col3:
-    st.info(f"⏰ Real-time")
+    st.info("🎯 Best at 9:30 AM")
 
 st.markdown("---")
 
-# Auto-refresh every 1 minute
-st_autorefresh(interval=60000)
+# Auto-refresh every 2 minutes
+st_autorefresh(interval=120000)
 
 # Analysis
-if st.session_state.watchlist:
-    st.info(f"🔍 Finding quality stocks moving 4-5% today...")
+if st.session_state.watchlist and len(st.session_state.watchlist) > 0:
+    st.info(f"🔮 Predicting {len(st.session_state.watchlist)} stocks...")
 
     results = []
     progress_bar = st.progress(0)
     status_text = st.empty()
 
     for idx, ticker in enumerate(st.session_state.watchlist):
-        # Show progress every 20 stocks
-        if idx % 20 == 0:
+        if idx % 50 == 0:
             status_text.write(f"⏳ {ticker}... ({idx}/{len(st.session_state.watchlist)})")
 
-        df = fetch_stock_data(ticker)
+        info = fetch_stock_info(ticker)
+        tech_df = fetch_technical_data(ticker)
 
-        if df is None or df.empty:
+        if info is None or tech_df is None:
             progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
-            time.sleep(0.02)
+            time.sleep(0.05)
             continue
 
-        metrics = analyze_stock(ticker, df)
+        signal, score, reason = predict_big_move(ticker, info, tech_df)
 
-        if not metrics:
-            progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
-            time.sleep(0.02)
-            continue
-
-        signal, score, reason = get_signal(ticker, metrics)
-
-        # Include if moving 2-8% (reasonable range)
-        if 2 <= abs(metrics['close_to_yesterday']) <= 8:
+        # Include if score >= 30 (worth watching)
+        if score >= 30:
             results.append({
                 'Ticker': ticker,
                 'Company': ticker_to_name.get(ticker, "-"),
-                'Price': round(metrics['close'], 2),
-                'Open': round(metrics['open'], 2),
-                'High': round(metrics['high'], 2),
-                'Day Move %': round(metrics['close_to_yesterday'], 2),
-                'Volume': f"{int(metrics['today_volume'] / 1000000)}M" if metrics[
-                                                                              'today_volume'] > 1000000 else f"{int(metrics['today_volume'] / 1000)}K",
-                'Vol Ratio': round(metrics['volume_ratio'], 2),
+                'Price': round(info['price'], 2),
+                'Volume': f"{int(info['avg_volume'] / 1000000)}M" if info[
+                                                                         'avg_volume'] > 1000000 else f"{int(info['avg_volume'] / 1000)}K",
+                'Sector': info['sector'],
+                '52W High': round(info['52_week_high'], 2),
+                '52W Low': round(info['52_week_low'], 2),
                 'Signal': signal,
                 'Reason': reason,
                 'Score': score
             })
 
         progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
-        time.sleep(0.02)
+        time.sleep(0.05)
 
     progress_bar.empty()
     status_text.empty()
 
-    if results:
+    if results and len(results) > 0:
         df_results = pd.DataFrame(results)
         df_results = df_results.sort_values('Score', ascending=False)
 
-        # ===== STRONG BUY (4-6% with volume) =====
-        strong = df_results[df_results['Score'] >= 70]
+        # ===== HIGH PROBABILITY =====
+        high_prob = df_results[df_results['Score'] >= 80]
 
-        st.subheader(f"✅ STRONG BUY - {len(strong)} Stock(s)")
-        st.success("Perfect 4-5% movers with good volume!")
-        if not strong.empty:
+        st.subheader(f"🔥 HIGH PROBABILITY MOVERS - {len(high_prob)} Stock(s)")
+        if len(high_prob) > 0:
+            st.error("⚡ BEST CANDIDATES - Likely 4-5%+ move TODAY!")
             st.dataframe(
-                strong[['Ticker', 'Company', 'Price', 'Day Move %', 'Volume', 'Vol Ratio', 'Score']],
+                high_prob[['Ticker', 'Company', 'Price', 'Volume', 'Sector', '52W High', 'Score']],
                 use_container_width=True,
-                height=400
+                height=300
             )
-            st.markdown("**Details:**")
-            for idx, row in strong.iterrows():
-                st.write(f"**{row['Ticker']}** → {row['Day Move %']:.1f}% | {row['Reason']}")
+            st.markdown("**WHY THEY'LL MOVE:**")
+            for idx, row in high_prob.iterrows():
+                st.write(f"**{row['Ticker']}** | {row['Reason']}")
         else:
-            st.info("No perfect 4-5% movers yet")
+            st.info("No high probability movers today")
 
-        # ===== GOOD BUY (3-7% with volume) =====
-        good = df_results[(df_results['Score'] >= 55) & (df_results['Score'] < 70)]
+        # ===== LIKELY TO MOVE =====
+        likely = df_results[(df_results['Score'] >= 65) & (df_results['Score'] < 80)]
 
-        with st.expander(f"👍 GOOD BUY - {len(good)} Stock(s) (3-7% moves)"):
-            if not good.empty:
+        with st.expander(f"⚡ LIKELY TO MOVE - {len(likely)} Stock(s)"):
+            if len(likely) > 0:
+                st.warning("Good candidates for 3-5% move")
                 st.dataframe(
-                    good[['Ticker', 'Company', 'Price', 'Day Move %', 'Volume', 'Vol Ratio', 'Score']],
+                    likely[['Ticker', 'Company', 'Price', 'Volume', 'Sector', 'Score']],
                     use_container_width=True,
-                    height=400
+                    height=300
                 )
             else:
-                st.info("No good movers")
+                st.info("No likely movers")
 
-        # ===== MODERATE (2-8%) =====
-        moderate = df_results[(df_results['Score'] >= 40) & (df_results['Score'] < 55)]
+        # ===== POSSIBLE =====
+        possible = df_results[(df_results['Score'] >= 50) & (df_results['Score'] < 65)]
 
-        with st.expander(f"🟡 MODERATE - {len(moderate)} Stock(s) (2-8% moves)"):
-            if not moderate.empty:
+        with st.expander(f"👍 POSSIBLE - {len(possible)} Stock(s)"):
+            if len(possible) > 0:
                 st.dataframe(
-                    moderate[['Ticker', 'Company', 'Price', 'Day Move %', 'Volume', 'Vol Ratio', 'Score']],
+                    possible[['Ticker', 'Company', 'Price', 'Volume', 'Score']],
                     use_container_width=True,
-                    height=400
+                    height=300
                 )
             else:
-                st.info("No moderate movers")
-
-        # ===== WATCH (Low volume but moving) =====
-        watch = df_results[(df_results['Score'] >= 20) & (df_results['Score'] < 40)]
-
-        with st.expander(f"👀 WATCH - {len(watch)} Stock(s) (Moving but weak volume)"):
-            if not watch.empty:
-                st.dataframe(
-                    watch[['Ticker', 'Company', 'Price', 'Day Move %', 'Volume', 'Score']],
-                    use_container_width=True,
-                    height=400
-                )
-            else:
-                st.info("No stocks to watch")
+                st.info("No possible movers")
 
         # ===== SUMMARY =====
         st.divider()
         st.subheader("📊 Summary")
 
-        col1, col2, col3, col4, col5 = st.columns(5)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("✅ Strong", len(strong))
+            st.metric("🔥 High Prob", len(high_prob))
         with col2:
-            st.metric("👍 Good", len(good))
+            st.metric("⚡ Likely", len(likely))
         with col3:
-            st.metric("🟡 Moderate", len(moderate))
+            st.metric("👍 Possible", len(possible))
         with col4:
-            st.metric("👀 Watch", len(watch))
-        with col5:
-            st.metric("Total Moving", len(df_results))
+            st.metric("Total Signals", len(df_results))
 
         st.success("""
         **✅ HOW THIS WORKS:**
 
-        **WHAT IT FINDS:**
-        - Stocks moving 4-5% TODAY ✅
-        - With volume confirmation (>1.0x normal)
-        - Quality stocks (price > $1, tradeable)
-        - No strict filters = Real results
+        **PREDICTS Big Movers Based On:**
+        1. 📊 **Technical Setup** (Volatility, Trend, RSI, Volume)
+        2. 🎯 **Fundamental** (Price levels, Market cap)
+        3. 🔴 **Catalysts** (Earnings, News)
+        4. 📌 **Sector Momentum**
 
-        **SCORING:**
-        - ✅ STRONG (Score 70+): Perfect 4-5% with heavy volume
-        - 👍 GOOD (Score 55-70): 3-7% with good volume
-        - 🟡 MODERATE (Score 40-55): 2-8% moves
-        - 👀 WATCH (Score 20-40): Moving but weak volume
+        **🔥 HIGH PROBABILITY = 80+ Score**
+        - Has strong technical setup
+        - OR has earnings today
+        - OR volume spike detected
+        - Expected move: 4-5%+
 
-        **WHY YOU GET RESULTS:**
-        - Simple logic: Just looking for 4-5% moves
-        - Works every market day
-        - No catalysts needed
-        - No earnings data needed
-        - Works with 1000 stocks
-        - Fast processing
+        **TRADING PLAN:**
+        ```
+        1. Identify HIGH PROBABILITY stocks
+        2. Enter at market open (9:30-10:00 AM)
+        3. Set target: +4-5%
+        4. Set stop: -2%
+        5. Exit before market close (3:00 PM)
+        ```
 
-        **VOLUME RATIO:**
-        - > 1.3x = Heavy (best)
-        - > 1.0x = Good (acceptable)
-        - < 1.0x = Weak (be careful)
+        **Why This Works:**
+        - Uses multiple factors (not just 1 indicator)
+        - Catches catalysts (earnings = big move)
+        - Identifies technical setups ready to move
+        - Predicts BEFORE the move happens
+        - High probability = better win rate
         """)
 
         st.info("""
-        **💡 HOW TO USE THIS:**
+        **💡 DAY TRADING RULES:**
 
-        1. **Run during market hours** (any time)
-        2. **Check STRONG BUY first** (4-5% with volume)
-        3. **Entry strategy:**
-           - Don't chase at high of day
-           - Wait for pullback to support
-           - Enter with stop loss 2% below
+        ✅ **DO:**
+        - Only trade 🔥 HIGH PROBABILITY stocks
+        - Enter AT market open (9:30-10:00 AM)
+        - Set stop loss 2% below entry
+        - Take profits at 2-3% (don't be greedy)
+        - Exit before 3:00 PM (allow exit time)
 
-        4. **Exit strategy:**
-           - Take profits at 2-3% (partial)
-           - Trail stop on rest
-           - Or hold for next day if strong
+        ❌ **DON'T:**
+        - Trade stocks with score < 50
+        - Chase stocks that already moved
+        - Hold overnight (day trade only)
+        - Risk more than 1% account per trade
+        - Enter late (after 11:00 AM)
 
-        5. **Quality check:**
-           - Only stocks you'd hold long-term
-           - Avoid penny stocks (already filtered)
-           - Check for news/earnings
-
-        **Daily Routine:**
-        - Run screener every morning at 10 AM
-        - Check STRONG BUY stocks
-        - Add to watchlist for entry opportunities
-        - Monitor during day for pullbacks
-        - Exit before market close or next day
+        **Money Management:**
+        - Risk only 1% per trade
+        - Example: $10,000 account = max $100 risk
+        - If stop is 2%, buy 50 shares of $100 stock
         """)
 
     else:
-        st.warning("⏳ No stocks moving 4-5% today yet...")
+        st.warning("⏳ No strong signals today...")
         st.info("""
-        **Why no results?**
-        - Market might be slow/range-bound
-        - Most stocks not moving enough
-        - Check back in 1-2 hours
-        - Or come back tomorrow
+        **Why no predictions?**
+        - Market may be calm today
+        - No earnings/catalysts
+        - Technical setup weak
 
-        **This is NORMAL** - not every day has 4-5% movers
+        **Check back at different times**
         """)
 
 else:
     st.error("❌ watchlist.csv is empty!")
-    st.info("📝 Add tickers to watchlist.csv (one per line with company names)")
 
 st.divider()
-st.caption("📈 Daily Stock Scanner v1.0 | Find 4-5% movers | Quality Stocks Only")
+st.caption("🔮 Predictive Day Trading Screener v1.0 | Predicts big movers TODAY")
