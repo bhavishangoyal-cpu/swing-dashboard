@@ -1053,7 +1053,7 @@ if st.session_state.watchlist:
 
         df = fetch_stock_data(ticker)
 
-        if not df:
+        if df is None or df.empty:
             progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
             time.sleep(0.02)
             continue
