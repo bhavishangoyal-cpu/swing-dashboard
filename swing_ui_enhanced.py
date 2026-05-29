@@ -1391,8 +1391,8 @@ def get_gap_signal_FINAL(metrics, market_bullish, vix_value, catalyst_info, volu
 
 # ================== STREAMLIT UI ==================
 
-if 'watchlist' not in st.session_state:
-    st.session_state.watchlist = load_watchlist_gap()
+st.session_state.watchlist = load_watchlist_gap()
+
 
 ticker_to_name_gap = load_ticker_to_name_gap()
 
