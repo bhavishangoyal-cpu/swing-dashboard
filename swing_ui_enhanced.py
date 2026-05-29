@@ -848,6 +848,7 @@ def load_ticker_to_name_gap():
 
     return ticker_dict
 
+watch_df = pd.read_csv("watchlist2.csv")
 
 # ================== PAGE CONFIG ==================
 
