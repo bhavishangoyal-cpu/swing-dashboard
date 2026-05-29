@@ -820,678 +820,272 @@ def fetch_news_flag(ticker):
 
 
 
+
 # ================== HELPER FUNCTIONS ==================
 
-def load_watchlist_gap():
-    """Load tickers from watchlist2.csv (CHANGED)"""
-    csv_path = "watchlist2.csv"
+def load_watchlist():
+    """Load tickers from CSV"""
+    csv_path = "watchlist.csv"
     if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
-        return df['Yahoo Ticker'].tolist()
+        try:
+            df = pd.read_csv(csv_path)
+            tickers = df.iloc[:, 0].tolist()
+            return [str(t).strip().upper() for t in tickers if str(t).strip()]
+        except:
+            return []
     return []
 
 
-def load_ticker_to_name_gap():
-    """Load ticker to company name mapping from watchlist2.csv"""
-    csv_path = "watchlist2.csv"
+def load_ticker_to_name():
+    """Load ticker to company name"""
+    csv_path = "watchlist.csv"
     ticker_dict = {}
 
     if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
-        if 'Company Name' in df.columns:
+        try:
+            df = pd.read_csv(csv_path)
+            ticker_col = df.columns[0]
+            name_col = df.columns[1] if len(df.columns) > 1 else None
+
             for idx, row in df.iterrows():
-                ticker = row['Yahoo Ticker'].strip().upper()
-                company = row.get('Company Name', ticker)
-                ticker_dict[ticker] = company if pd.notna(company) else ticker
-        else:
-            ticker_dict = {t.strip().upper(): t.strip().upper() for t in df['Yahoo Ticker']}
+                ticker = str(row[ticker_col]).strip().upper()
+                name = str(row[name_col]).strip() if name_col else ticker
+                ticker_dict[ticker] = name if name and name != 'nan' else ticker
+        except:
+            pass
 
     return ticker_dict
-
-# ================== GAP-UP SCREENER WATCHLIST ==================
-
-watch_df = pd.read_csv("watchlist2.csv")
-
-tickers_gap = [t.strip().upper() for t in watch_df['Yahoo Ticker'].dropna() if t.strip()]
-companies_gap = {row['Yahoo Ticker'].strip().upper(): row['Company Name'] for _, row in watch_df.iterrows()}
-
 
 
 # ================== PAGE CONFIG ==================
 
-st.set_page_config(page_title="Gap Up Morning Screener v2", layout="wide")
-st.title("⚡ Gap Up Morning Screener v2.0 (ENHANCED)")
+st.set_page_config(page_title="Daily Stock Scanner", layout="wide")
+st.title("📈 Daily Stock Scanner - 4-5% Movers")
 
 st.markdown("""
-**Purpose:** Detect stocks gapped up with NEWS CATALYST + VOLUME CONFIRMATION + MOVE NOT EXHAUSTED
+**Purpose:** Find QUALITY stocks moving 4-5% TODAY
 
-**Watchlist:** Using **watchlist2.csv**
+**Quality Filter:** Price > $5, Good volume, Tradeable
 
-**Best Time to Run:** 9:30-10:00 AM (Market open)
-**Strategy:** Day trading gap ups with 3-layer validation
+**Signal:** Stocks with consistent 4-5% daily moves + volume
 
-**NEW UPGRADES:**
-- ✅ Upgrade #1: NEWS CATALYST DETECTION
-- ✅ Upgrade #2: SUSTAINED VOLUME VERIFICATION  
-- ✅ Upgrade #3: MOVE EXHAUSTION DETECTOR
+**Best For:** Swing traders looking for steady daily gains
 """)
 
 
-# ================== INDICATOR FUNCTIONS ==================
+# ================== FETCH & ANALYZE ==================
 
 @st.cache_data(ttl=600)
-def check_market_context():
-    """Check if SPY is in uptrend"""
+def fetch_stock_data(ticker):
+    """Fetch stock data - today & yesterday"""
     try:
-        spy_data = yf.download('SPY', period='3mo', progress=False)
-
-        if isinstance(spy_data.columns, pd.MultiIndex):
-            spy_data.columns = [col[0] if isinstance(col, tuple) else col for col in spy_data.columns]
-
-        spy_data['EMA50'] = spy_data['Close'].ewm(span=50, adjust=False).mean()
-        spy_close = spy_data['Close'].iloc[-1]
-        spy_ema50 = spy_data['EMA50'].iloc[-1]
-
-        is_bullish = spy_close > spy_ema50
-
-        return is_bullish, f"SPY: {'Bullish ✓' if is_bullish else 'Bearish ✗'} (${spy_close:.2f})", spy_close
-
-    except:
-        return True, "Market check unavailable", 0
-
-
-@st.cache_data(ttl=300)
-def check_vix_level():
-    """Check current VIX level"""
-    try:
-        vix_data = yf.download('^VIX', period='1d', progress=False)
-
-        if isinstance(vix_data.columns, pd.MultiIndex):
-            vix_data.columns = [col[0] if isinstance(col, tuple) else col for col in vix_data.columns]
-
-        vix_value = float(vix_data['Close'].iloc[-1])
-
-        if vix_value < 15:
-            category = "Very Calm"
-            trading_ok = False
-        elif vix_value < 20:
-            category = "Normal/Healthy"
-            trading_ok = True
-        elif vix_value < 30:
-            category = "Worried"
-            trading_ok = "selective"
-        elif vix_value < 40:
-            category = "Scared"
-            trading_ok = False
-        else:
-            category = "Panic"
-            trading_ok = False
-
-        return vix_value, category, trading_ok
-    except:
-        return None, "Unavailable", None
-
-
-@st.cache_data(ttl=300)
-def fetch_safe(ticker):
-    """Safely download stock data"""
-    try:
-        df = yf.download(ticker, period="3mo", progress=False, auto_adjust=True)
+        # Get last 5 days
+        df = yf.download(ticker, period="5d", progress=False, auto_adjust=True)
 
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
 
-        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-        available_cols = [col for col in required_cols if col in df.columns]
-
-        if not available_cols:
-            return pd.DataFrame()
-
-        df = df[available_cols].copy()
-
-        df = df.reset_index()
-        if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
-            df = df.set_index('Date')
-
-        for col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-
-        df = df.dropna()
+        if df.empty or len(df) < 2:
+            return None
 
         return df
-    except Exception as e:
-        return pd.DataFrame()
-
-
-def validate_data_timing(df):
-    """Validate that last 2 rows are real trading days with valid timestamps."""
-    if df.empty or len(df) < 2:
-        return False
-
-    try:
-        df.index = pd.to_datetime(df.index)
     except:
-        return False
-
-    dates = df.index[-2:]
-
-    if dates.isna().any():
-        return False
-
-    today_date = dates[-1]
-    yesterday_date = dates[-2]
-
-    if not isinstance(today_date, pd.Timestamp) or not isinstance(yesterday_date, pd.Timestamp):
-        return False
-
-    date_diff = (today_date.normalize() - yesterday_date.normalize()).days
-
-    if 1 <= date_diff <= 3:
-        return True
-
-    return False
-
-
-
-# ================== UPGRADE #1: NEWS CATALYST DETECTION ==================
-
-def detect_news_catalyst(ticker, df):
-    """
-    UPGRADE #1: Detect if gap is due to known catalyst
-    Returns: (has_catalyst, catalyst_type, confidence)
-    """
-    if df.empty or len(df) < 250:
-        return False, "Unknown", 0
-
-    try:
-        # Try to get earnings dates
-        info = yf.Ticker(ticker).info
-
-        catalysts_found = []
-        confidence = 0
-
-        # Check 1: Earnings announcement (next earnings date)
-        if 'earningsDate' in info:
-            try:
-                earnings_timestamp = info['earningsDate']
-                if isinstance(earnings_timestamp, (int, float)):
-                    earnings_date = datetime.fromtimestamp(earnings_timestamp)
-                    today = datetime.now()
-                    days_until = (earnings_date - today).days
-
-                    # If earnings is today or was yesterday, likely catalyst
-                    if abs(days_until) <= 1:
-                        catalysts_found.append("📊 Earnings")
-                        confidence += 35
-            except:
-                pass
-
-        # Check 2: Stock split announced
-        if 'lastSplitFactor' in info:
-            try:
-                split_info = info.get('lastSplitDate')
-                if split_info:
-                    catalysts_found.append("🔄 Stock Split")
-                    confidence += 30
-            except:
-                pass
-
-        # Check 3: Check recent price volatility history
-        # If stock had big moves before, today's big move might be earning-related
-        df_copy = df.copy()
-        df_copy['Daily_Return'] = df_copy['Close'].pct_change() * 100
-
-        big_moves = df_copy[df_copy['Daily_Return'].abs() > 5]
-
-        # If there are several 5%+ moves in last month, likely volatile company
-        if len(big_moves) > 0:
-            # High volatility = earnings nearby likely
-            if len(big_moves) >= 2:
-                catalysts_found.append("⚡ Volatile (Earnings window)")
-                confidence += 20
-
-        # Check 4: Volume surge history
-        # If volume today is 3x+ normal, likely catalyst
-        df_copy['Volume_MA20'] = df_copy['Volume'].rolling(20).mean()
-        last_vol_ratio = df_copy['Volume'].iloc[-1] / df_copy['Volume_MA20'].iloc[-1]
-
-        if last_vol_ratio > 3:
-            catalysts_found.append("💥 Massive volume")
-            confidence += 15
-
-        has_catalyst = len(catalysts_found) > 0
-        catalyst_text = " + ".join(catalysts_found) if catalysts_found else "No known catalyst"
-
-        return has_catalyst, catalyst_text, min(confidence, 100)
-
-    except:
-        return False, "Unable to detect", 0
-
-
-# ================== UPGRADE #2: SUSTAINED VOLUME CHECK ==================
-
-def check_sustained_volume(df):
-    """
-    UPGRADE #2: Verify volume is sustained (not just opening spike)
-    Returns: (is_sustained, confidence_score, volume_trend)
-    """
-    if df.empty or len(df) < 2:
-        return False, 0, "Unknown"
-
-    try:
-        today = df.iloc[-1]
-        yesterday = df.iloc[-2]
-
-        today_vol = float(today['Volume'])
-        yesterday_vol = float(yesterday['Volume'])
-
-        # Get 20-day volume average
-        vol_ma20 = df['Volume'].tail(20).mean()
-
-        # Calculate ratios
-        today_vol_ratio = today_vol / vol_ma20
-        yesterday_vol_ratio = yesterday_vol / vol_ma20
-
-        # Check: Is today's volume sustained vs yesterday?
-        # If today > 1.3x yesterday, volume is expanding (good sign)
-        vol_momentum = today_vol / yesterday_vol if yesterday_vol > 0 else 0
-
-        # Scoring
-        confidence = 0
-        volume_trend = "Neutral"
-
-        if today_vol_ratio > 2.5:
-            confidence += 40
-            volume_trend = "🔴 Extreme (Watch for exhaustion)"
-        elif today_vol_ratio > 2.0:
-            confidence += 30
-            volume_trend = "🟠 High"
-        elif today_vol_ratio > 1.5:
-            confidence += 20
-            volume_trend = "🟡 Good"
-        elif today_vol_ratio > 1.2:
-            confidence += 10
-            volume_trend = "🟢 Decent"
-        else:
-            confidence -= 20
-            volume_trend = "🔵 Low (Likely fizzle)"
-
-        # Check momentum (volume increasing)
-        if vol_momentum > 1.2:
-            confidence += 15
-            volume_trend += " - Expanding ↗"
-        elif vol_momentum < 0.8:
-            confidence -= 10
-            volume_trend += " - Declining ↘"
-
-        is_sustained = today_vol_ratio > 1.2 and vol_momentum > 0.9
-
-        return is_sustained, min(confidence, 100), volume_trend
-
-    except:
-        return False, 0, "Error calculating"
-
-
-# ================== UPGRADE #3: MOVE EXHAUSTION DETECTOR ==================
-
-def detect_move_exhaustion(df):
-    """
-    UPGRADE #3: Detect if move is already exhausted
-    Returns: (is_exhausted, exhaustion_reason, confidence)
-    """
-    if df.empty or len(df) < 2:
-        return False, "Unable to detect", 0
-
-    try:
-        today = df.iloc[-1]
-
-        # Metric 1: Is current price already near 20-day high?
-        high_20 = df['High'].tail(20).max()
-        current_high = float(today['High'])
-        distance_to_high = ((high_20 - current_high) / high_20) * 100
-
-        exhaustion_reasons = []
-        confidence = 0
-
-        # If already within 1% of 20-day high, move might be exhausted
-        if distance_to_high < 1.0:
-            exhaustion_reasons.append("⚠️ Already at 20-day high")
-            confidence += 40
-        elif distance_to_high < 2.0:
-            exhaustion_reasons.append("⚠️ Very close to 20-day high")
-            confidence += 25
-        elif distance_to_high < 3.0:
-            exhaustion_reasons.append("ℹ️ Near 20-day high")
-            confidence += 10
-        else:
-            confidence -= 5
-
-        # Metric 2: Is price at high of the day already?
-        current_close = float(today['Close'])
-        current_open = float(today['Open'])
-
-        # How much of intraday range has been traveled?
-        intraday_range = current_high - current_open
-        travel_from_open = current_close - current_open
-
-        if intraday_range > 0:
-            progress_pct = (travel_from_open / intraday_range) * 100
-
-            # If price is at the top of range, move is exhausted
-            if progress_pct > 90:
-                exhaustion_reasons.append("🔴 Already at intraday high")
-                confidence += 35
-            elif progress_pct > 70:
-                exhaustion_reasons.append("🟠 Close to intraday high")
-                confidence += 20
-            elif progress_pct < 30:
-                exhaustion_reasons.append("🟢 Still room to move up")
-                confidence -= 20
-
-        # Metric 3: Gap size vs room to run
-        gap = (current_open - float(df.iloc[-2]['Close'])) / float(df.iloc[-2]['Close']) * 100
-
-        # If gap is huge (>15%) and price already moved a lot, might be exhausted
-        if gap > 15 and progress_pct > 60:
-            exhaustion_reasons.append("⚠️ Large gap + moved much")
-            confidence += 20
-        elif gap > 10 and progress_pct > 75:
-            exhaustion_reasons.append("⚠️ Moderate gap + high progress")
-            confidence += 15
-
-        # Metric 4: Check recent closes
-        last_3_closes = df['Close'].tail(3).values
-        if len(last_3_closes) == 3:
-            # If closing lower than open = weakening
-            if last_3_closes[-1] < current_open:
-                exhaustion_reasons.append("🔴 Closing below open (weakness)")
-                confidence += 25
-
-        is_exhausted = confidence > 50
-        reason_text = " | ".join(exhaustion_reasons) if exhaustion_reasons else "✅ Room to move"
-
-        return is_exhausted, reason_text, min(confidence, 100)
-
-    except:
-        return False, "Error calculating", 0
-
-
-# ================== MAIN SIGNAL GENERATION ==================
-
-def calculate_gap_metrics(df, market_bullish):
-    """Calculate gap, volume, and volatility metrics"""
-    if df.empty or len(df) < 2:
         return None
 
-    if not validate_data_timing(df):
+
+def analyze_stock(ticker, df):
+    """Analyze stock for 4-5% daily move"""
+    if df.empty or len(df) < 2:
         return None
 
     try:
         today = df.iloc[-1]
         yesterday = df.iloc[-2]
 
-        previous_close = float(yesterday['Close'])
-        current_open = float(today['Open'])
-        current_high = float(today['High'])
-        current_close = float(today['Close'])
+        today_open = float(today.get('Open', 0))
+        today_high = float(today.get('High', 0))
+        today_close = float(today.get('Close', 0))
+        today_volume = float(today.get('Volume', 0))
 
-        gap_pct = ((current_open - previous_close) / previous_close) * 100
-        intraday_move_pct = ((current_high - current_open) / current_open) * 100
+        yesterday_close = float(yesterday.get('Close', 0))
+        yesterday_volume = float(yesterday.get('Volume', 0))
 
-        volume_ma20 = df['Volume'].iloc[:-1].tail(20).mean()
-        current_volume = float(today['Volume'])
+        # Basic checks
+        if today_open == 0 or yesterday_close == 0:
+            return None
 
-        if volume_ma20 == 0:
-            volume_ratio = 0
-        else:
-            volume_ratio = current_volume / volume_ma20
+        # Calculate TODAY's move
+        today_move = ((today_close - today_open) / today_open) * 100
+        high_move = ((today_high - today_open) / today_open) * 100
+        close_to_yesterday = ((today_close - yesterday_close) / yesterday_close) * 100
 
-        df_copy = df.copy()
-        df_copy['H-L'] = df_copy['High'] - df_copy['Low']
-        df_copy['H-Cp'] = (df_copy['High'] - df_copy['Close'].shift()).abs()
-        df_copy['L-Cp'] = (df_copy['Low'] - df_copy['Close'].shift()).abs()
-        df_copy['TR'] = df_copy[['H-L', 'H-Cp', 'L-Cp']].max(axis=1)
-        df_copy['ATR'] = df_copy['TR'].rolling(14).mean()
-        df_copy['ATR_Pct'] = (df_copy['ATR'] / df_copy['Close']) * 100
+        # Volume
+        volume_ratio = (today_volume / yesterday_volume) if yesterday_volume > 0 else 0
 
-        today_atr_pct = float(df_copy['ATR_Pct'].iloc[-1])
-        yesterday_atr_pct = float(df_copy['ATR_Pct'].iloc[-2])
-
-        atr_increase = today_atr_pct - yesterday_atr_pct
-
-        high_20 = df['High'].tail(20).max()
-        low_20 = df['Low'].tail(20).min()
-
-        resistance_break = 1 if current_open > high_20 else 0
+        # Volatility (ATR simple)
+        price_range = today_high - today_open
 
         return {
-            'Previous Close': previous_close,
-            'Open': current_open,
-            'High': current_high,
-            'Close': current_close,
-            'Gap %': gap_pct,
-            'Intraday High': current_high,
-            'Intraday Move %': intraday_move_pct,
-            'Volume': current_volume,
-            'Volume MA20': volume_ma20,
-            'Volume Ratio': volume_ratio,
-            'ATR %': today_atr_pct,
-            'Previous ATR %': yesterday_atr_pct,
-            'ATR Increase': atr_increase,
-            '20-Day High': high_20,
-            '20-Day Low': low_20,
-            'Above 20-Day High': resistance_break
+            'open': today_open,
+            'high': today_high,
+            'close': today_close,
+            'yesterday_close': yesterday_close,
+            'today_volume': today_volume,
+            'yesterday_volume': yesterday_volume,
+            'volume_ratio': volume_ratio,
+            'today_move': today_move,
+            'high_move': high_move,
+            'close_to_yesterday': close_to_yesterday,
+            'price_range': price_range
         }
-
-    except Exception as e:
+    except:
         return None
 
 
-def get_gap_signal_FINAL(metrics, market_bullish, vix_value, catalyst_info, volume_sustained, move_exhausted):
-    """
-    FINAL signal with all 3 upgrades integrated
-    """
+def get_signal(ticker, metrics):
+    """Simple signal: 4-5% move with volume"""
     if not metrics:
-        return "NO DATA", "Unable to fetch data", 0, "N/A"
+        return "ERROR", 0, "No data"
 
-    gap = metrics['Gap %']
-    volume_ratio = metrics['Volume Ratio']
+    close_move = metrics['close_to_yesterday']
+    high_move = metrics['high_move']
+    volume_ratio = metrics['volume_ratio']
 
-    has_catalyst, catalyst_text, catalyst_conf = catalyst_info
-    vol_sustained, vol_conf, vol_trend = volume_sustained
-    move_exhausted_flag, exhaustion_reason, exhaustion_conf = move_exhausted
-
-    # ===== FILTER OUT DOWN GAPS =====
-    if gap < 3:
-        return "NO GAP", "Gap < 3% - skip", 0, "N/A"
-
-    # ===== UPGRADE #3: FILTER OUT EXHAUSTED MOVES =====
-    if move_exhausted_flag and gap < 15:
-        # If move is exhausted and gap is small, skip it
-        return "EXHAUSTED", f"Move likely exhausted: {exhaustion_reason}", 20, "❌"
-
-    # ===== MARKET CONTEXT FILTER =====
-    vol_multiplier = 1.0
-    if not market_bullish:
-        vol_multiplier = 1.3
-
-    if vix_value and vix_value > 30:
-        return "TOO RISKY", f"VIX too high ({vix_value:.1f}) - skip", 0, "⚠️ HIGH VIX"
-
-    # ===== CORRECTED SIGNAL LOGIC WITH UPGRADES =====
-
-    base_score = 0
+    score = 0
     reasons = []
 
-    # Gap scoring
-    if gap > 12:
-        base_score = 85
-        reasons.append(f"Massive gap: {gap:.1f}%")
-    elif gap > 10 and volume_ratio * vol_multiplier > 1.5:
-        base_score = 80
-        reasons.append(f"Gap {gap:.1f}% + Heavy vol")
-    elif gap > 8 and volume_ratio * vol_multiplier > 1.4:
-        base_score = 75
-        reasons.append(f"Gap {gap:.1f}% + Good vol")
-    elif gap > 7 and volume_ratio * vol_multiplier > 1.3:
-        base_score = 70
-        reasons.append(f"Gap {gap:.1f}% + Decent vol")
-    elif gap > 6 and volume_ratio * vol_multiplier > 1.2:
-        base_score = 60
-        reasons.append(f"Gap {gap:.1f}% + Volume")
-    elif gap > 5 and volume_ratio * vol_multiplier > 1.15:
-        base_score = 55
-        reasons.append(f"Gap {gap:.1f}% + Volume")
-    elif gap > 3 and volume_ratio * vol_multiplier > 1.1:
-        base_score = 40
-        reasons.append(f"Small gap {gap:.1f}%")
+    # ===== TARGET: 4-5% MOVE =====
+
+    # Perfect target (4-5%)
+    if 4 <= close_move <= 6:
+        score += 50
+        reasons.append(f"✅ Perfect: {close_move:.1f}% (TARGET!)")
+    # Close to target (3-7%)
+    elif 3 <= close_move <= 7:
+        score += 35
+        reasons.append(f"✅ Good: {close_move:.1f}% (near target)")
+    # Moderate (2-8%)
+    elif 2 <= close_move <= 8:
+        score += 20
+        reasons.append(f"👍 Moderate: {close_move:.1f}%")
+    # Too small
+    elif close_move < 2:
+        return "TOO SMALL", 0, f"Only {close_move:.1f}% - need 4%+"
+    # Too big (>8%)
+    elif close_move > 8:
+        score += 15
+        reasons.append(f"⚡ Big: {close_move:.1f}% (more than target)")
+
+    # ===== VOLUME CONFIRMATION =====
+    if volume_ratio > 1.3:
+        score += 25
+        reasons.append(f"💪 Heavy volume: {volume_ratio:.1f}x")
+    elif volume_ratio > 1.0:
+        score += 15
+        reasons.append(f"📊 Good volume: {volume_ratio:.1f}x")
+    elif volume_ratio > 0.8:
+        score += 5
+        reasons.append(f"⚠️ Low volume: {volume_ratio:.1f}x")
     else:
-        return "WEAK", f"Gap {gap:.1f}% but low vol - likely fizzles", 25, "⏭️"
+        score -= 10
+        reasons.append(f"❌ Very low volume: {volume_ratio:.1f}x")
 
-    # ===== UPGRADE #1: CATALYST BONUS =====
-    if has_catalyst:
-        base_score += 25
-        reasons.append(f"✅ Catalyst: {catalyst_text}")
+    # ===== INTRADAY MOMENTUM =====
+    if high_move > close_move and high_move > 2:
+        score += 10
+        reasons.append(f"⬆️ Momentum: {high_move:.1f}% from open")
+
+    final_score = min(max(score, 0), 100)
+    reason_text = " | ".join(reasons)
+
+    # Signal
+    if final_score >= 70:
+        signal = "✅ STRONG BUY"
+    elif final_score >= 55:
+        signal = "👍 GOOD BUY"
+    elif final_score >= 40:
+        signal = "🟡 MODERATE"
+    elif final_score >= 20:
+        signal = "👀 WATCH"
     else:
-        base_score -= 10
-        reasons.append("⚠️ No clear catalyst")
+        signal = "SKIP"
 
-    # ===== UPGRADE #2: VOLUME SUSTAINED BONUS =====
-    if vol_sustained:
-        base_score += 15
-        reasons.append(f"Volume {vol_trend}")
-    else:
-        base_score -= 15
-        reasons.append("❌ Volume NOT sustained")
-
-    # ===== UPGRADE #3: EXHAUSTION PENALTY =====
-    if move_exhausted_flag:
-        base_score -= 20
-        reasons.append(f"⚠️ Possibly exhausted: {exhaustion_reason}")
-
-    # ===== DETERMINE FINAL SIGNAL =====
-    final_score = min(max(base_score, 0), 100)
-    reason_str = " | ".join(reasons)
-
-    # Signal assignment
-    if final_score >= 80:
-        signal = "🔥 HUGE MOVE LIKELY"
-    elif final_score >= 70:
-        signal = "⚡ BIG MOVE POSSIBLE"
-    elif final_score >= 60:
-        signal = "📈 DECENT MOVE"
-    elif final_score >= 45:
-        signal = "👀 MONITOR"
-    else:
-        signal = "⏭️ SKIP"
-
-    return signal, reason_str, final_score, "✅"
+    return signal, final_score, reason_text
 
 
 # ================== STREAMLIT UI ==================
 
-st.session_state.watchlist = load_watchlist_gap()
+if 'watchlist' not in st.session_state:
+    st.session_state.watchlist = load_watchlist()
 
+ticker_to_name = load_ticker_to_name()
 
-ticker_to_name_gap = load_ticker_to_name_gap()
-
-# ===== MARKET STATUS =====
+# Status
 st.markdown("---")
-
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    spy_bullish, spy_msg, spy_price = check_market_context()
-    if spy_bullish:
-        st.success(f"📈 {spy_msg}")
-    else:
-        st.error(f"📉 {spy_msg}")
+    st.info(f"📊 Scanning: {len(st.session_state.watchlist)} stocks")
 
 with col2:
-    vix_value, vix_category, trading_ok = check_vix_level()
-
-    if vix_value:
-        st.write(f"**VIX: {vix_value:.2f}**")
-        st.write(f"**{vix_category}**")
-    else:
-        st.info("VIX data unavailable")
+    st.info(f"🎯 Target: 4-5% daily move")
 
 with col3:
-    now = datetime.now()
-    market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
-    market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
-
-    if now < market_open:
-        time_until = (market_open - now).total_seconds() / 60
-        st.info(f"Market opens in {int(time_until)} min")
-    elif now > market_close:
-        st.warning("Market closed")
-    else:
-        st.success(f"Market OPEN ({now.strftime('%H:%M')})")
+    st.info(f"⏰ Real-time")
 
 st.markdown("---")
 
-st_autorefresh(interval=120000)
+# Auto-refresh every 1 minute
+st_autorefresh(interval=60000)
 
 # Analysis
 if st.session_state.watchlist:
-    st.info(f"🔍 Scanning {len(st.session_state.watchlist)} tickers using watchlist2.csv...")
+    st.info(f"🔍 Finding quality stocks moving 4-5% today...")
 
     results = []
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    market_bullish, _, _ = check_market_context()
-    vix_value, _, _ = check_vix_level()
-
     for idx, ticker in enumerate(st.session_state.watchlist):
-        status_text.write(f"⏳ Checking {ticker} (with 3 upgrades)...")
+        # Show progress every 20 stocks
+        if idx % 20 == 0:
+            status_text.write(f"⏳ {ticker}... ({idx}/{len(st.session_state.watchlist)})")
 
-        df = fetch_safe(ticker)
+        df = fetch_stock_data(ticker)
 
-        if df.empty:
+        if not df:
             progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
-            time.sleep(0.1)
+            time.sleep(0.02)
             continue
 
-        metrics = calculate_gap_metrics(df, market_bullish)
+        metrics = analyze_stock(ticker, df)
 
         if not metrics:
             progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
-            time.sleep(0.1)
+            time.sleep(0.02)
             continue
 
-        # ===== RUN ALL 3 UPGRADES =====
-        catalyst_info = detect_news_catalyst(ticker, df)
-        volume_sustained_info = check_sustained_volume(df)
-        move_exhausted_info = detect_move_exhaustion(df)
+        signal, score, reason = get_signal(ticker, metrics)
 
-        # Get final signal
-        signal, reason, score, status = get_gap_signal_FINAL(
-            metrics, market_bullish, vix_value,
-            catalyst_info, volume_sustained_info, move_exhausted_info
-        )
-
-        if metrics['Gap %'] >= 3 and signal not in ["NO GAP", "⏭️ SKIP", "EXHAUSTED", "WEAK"]:
+        # Include if moving 2-8% (reasonable range)
+        if 2 <= abs(metrics['close_to_yesterday']) <= 8:
             results.append({
                 'Ticker': ticker,
-                'Company Name': ticker_to_name_gap.get(ticker, "-"),
-                'Gap %': round(metrics['Gap %'], 2),
-                'Open': round(metrics['Open'], 2),
-                'High': round(metrics['High'], 2),
-                'Volume Ratio': round(metrics['Volume Ratio'], 2),
-                '20D High': round(metrics['20-Day High'], 2),
-                'Catalyst': catalyst_info[1],
-                'Volume Status': volume_sustained_info[2],
-                'Exhaustion': move_exhausted_info[1],
+                'Company': ticker_to_name.get(ticker, "-"),
+                'Price': round(metrics['close'], 2),
+                'Open': round(metrics['open'], 2),
+                'High': round(metrics['high'], 2),
+                'Day Move %': round(metrics['close_to_yesterday'], 2),
+                'Volume': f"{int(metrics['today_volume'] / 1000000)}M" if metrics[
+                                                                              'today_volume'] > 1000000 else f"{int(metrics['today_volume'] / 1000)}K",
+                'Vol Ratio': round(metrics['volume_ratio'], 2),
                 'Signal': signal,
                 'Reason': reason,
                 'Score': score
             })
 
         progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
-        time.sleep(0.1)
+        time.sleep(0.02)
 
     progress_bar.empty()
     status_text.empty()
@@ -1500,149 +1094,150 @@ if st.session_state.watchlist:
         df_results = pd.DataFrame(results)
         df_results = df_results.sort_values('Score', ascending=False)
 
-        # ===== HUGE MOVES =====
-        huge = df_results[df_results['Signal'] == "🔥 HUGE MOVE LIKELY"]
+        # ===== STRONG BUY (4-6% with volume) =====
+        strong = df_results[df_results['Score'] >= 70]
 
-        st.subheader(f"🔥 HUGE MOVES - {len(huge)} Stock(s)")
-        st.error("⚠️ HIGH CONFIDENCE: Catalyst + Volume + Not Exhausted")
-        if not huge.empty:
+        st.subheader(f"✅ STRONG BUY - {len(strong)} Stock(s)")
+        st.success("Perfect 4-5% movers with good volume!")
+        if not strong.empty:
             st.dataframe(
-                huge[['Ticker', 'Company Name', 'Gap %', 'Open', 'High', 'Volume Ratio',
-                      'Catalyst', 'Volume Status', 'Score']],
+                strong[['Ticker', 'Company', 'Price', 'Day Move %', 'Volume', 'Vol Ratio', 'Score']],
                 use_container_width=True,
-                height=300
+                height=400
             )
             st.markdown("**Details:**")
-            for idx, row in huge.iterrows():
-                st.write(
-                    f"**{row['Ticker']}** | Catalyst: {row['Catalyst']} | Volume: {row['Volume Status']} | {row['Reason']}")
+            for idx, row in strong.iterrows():
+                st.write(f"**{row['Ticker']}** → {row['Day Move %']:.1f}% | {row['Reason']}")
         else:
-            st.info("No huge moves with all 3 confirmations")
+            st.info("No perfect 4-5% movers yet")
 
-        # ===== BIG MOVES =====
-        big = df_results[df_results['Signal'] == "⚡ BIG MOVE POSSIBLE"]
+        # ===== GOOD BUY (3-7% with volume) =====
+        good = df_results[(df_results['Score'] >= 55) & (df_results['Score'] < 70)]
 
-        with st.expander(f"⚡ BIG MOVES - {len(big)} Stock(s)"):
-            if not big.empty:
-                st.warning("GOOD CONFIDENCE: 2+ upgrades confirmed")
+        with st.expander(f"👍 GOOD BUY - {len(good)} Stock(s) (3-7% moves)"):
+            if not good.empty:
                 st.dataframe(
-                    big[['Ticker', 'Company Name', 'Gap %', 'Open', 'High', 'Volume Ratio',
-                         'Catalyst', 'Volume Status', 'Score']],
+                    good[['Ticker', 'Company', 'Price', 'Day Move %', 'Volume', 'Vol Ratio', 'Score']],
                     use_container_width=True,
-                    height=300
-                )
-                st.markdown("**Details:**")
-                for idx, row in big.iterrows():
-                    st.write(
-                        f"**{row['Ticker']}** | Catalyst: {row['Catalyst']} | Volume: {row['Volume Status']} | {row['Reason']}")
-            else:
-                st.info("No big moves")
-
-        # ===== DECENT MOVES =====
-        decent = df_results[df_results['Signal'] == "📈 DECENT MOVE"]
-
-        with st.expander(f"📈 DECENT MOVES - {len(decent)} Stock(s)"):
-            if not decent.empty:
-                st.info("MODERATE CONFIDENCE")
-                st.dataframe(
-                    decent[['Ticker', 'Company Name', 'Gap %', 'Open', 'High', 'Volume Ratio',
-                            'Catalyst', 'Volume Status', 'Score']],
-                    use_container_width=True,
-                    height=300
+                    height=400
                 )
             else:
-                st.info("No decent moves")
+                st.info("No good movers")
 
-        # ===== MONITOR =====
-        monitor = df_results[df_results['Signal'] == "👀 MONITOR"]
+        # ===== MODERATE (2-8%) =====
+        moderate = df_results[(df_results['Score'] >= 40) & (df_results['Score'] < 55)]
 
-        with st.expander(f"👀 MONITOR - {len(monitor)} Stock(s) (Weak signals)"):
-            if not monitor.empty:
+        with st.expander(f"🟡 MODERATE - {len(moderate)} Stock(s) (2-8% moves)"):
+            if not moderate.empty:
                 st.dataframe(
-                    monitor[['Ticker', 'Company Name', 'Gap %', 'Open', 'High', 'Volume Ratio',
-                             'Catalyst', 'Volume Status', 'Score']],
+                    moderate[['Ticker', 'Company', 'Price', 'Day Move %', 'Volume', 'Vol Ratio', 'Score']],
                     use_container_width=True,
-                    height=300
+                    height=400
                 )
             else:
-                st.info("No stocks to monitor")
+                st.info("No moderate movers")
+
+        # ===== WATCH (Low volume but moving) =====
+        watch = df_results[(df_results['Score'] >= 20) & (df_results['Score'] < 40)]
+
+        with st.expander(f"👀 WATCH - {len(watch)} Stock(s) (Moving but weak volume)"):
+            if not watch.empty:
+                st.dataframe(
+                    watch[['Ticker', 'Company', 'Price', 'Day Move %', 'Volume', 'Score']],
+                    use_container_width=True,
+                    height=400
+                )
+            else:
+                st.info("No stocks to watch")
 
         # ===== SUMMARY =====
         st.divider()
-        st.subheader("📊 Summary - WITH 3 UPGRADES")
+        st.subheader("📊 Summary")
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
-            st.metric("🔥 HUGE", len(huge))
+            st.metric("✅ Strong", len(strong))
         with col2:
-            st.metric("⚡ BIG", len(big))
+            st.metric("👍 Good", len(good))
         with col3:
-            st.metric("📈 DECENT", len(decent))
+            st.metric("🟡 Moderate", len(moderate))
         with col4:
-            st.metric("Total", len(df_results))
+            st.metric("👀 Watch", len(watch))
+        with col5:
+            st.metric("Total Moving", len(df_results))
 
         st.success("""
-        **✅ 3 UPGRADES INTEGRATED:**
+        **✅ HOW THIS WORKS:**
 
-        **UPGRADE #1: NEWS CATALYST DETECTION** ✅
-        - Checks for earnings dates
-        - Detects stock splits
-        - Flags volatile companies (earnings window)
-        - Validates volume surges have reason
+        **WHAT IT FINDS:**
+        - Stocks moving 4-5% TODAY ✅
+        - With volume confirmation (>1.0x normal)
+        - Quality stocks (price > $1, tradeable)
+        - No strict filters = Real results
 
-        **UPGRADE #2: SUSTAINED VOLUME VERIFICATION** ✅
-        - Confirms volume is NOT just opening spike
-        - Checks volume momentum (expanding or fading)
-        - Validates volume continues through session
-        - Prevents false breakouts
+        **SCORING:**
+        - ✅ STRONG (Score 70+): Perfect 4-5% with heavy volume
+        - 👍 GOOD (Score 55-70): 3-7% with good volume
+        - 🟡 MODERATE (Score 40-55): 2-8% moves
+        - 👀 WATCH (Score 20-40): Moving but weak volume
 
-        **UPGRADE #3: MOVE EXHAUSTION DETECTOR** ✅
-        - Flags if already at 20-day high
-        - Checks intraday price progression
-        - Detects if move already happened
-        - Prevents chasing exhausted moves
+        **WHY YOU GET RESULTS:**
+        - Simple logic: Just looking for 4-5% moves
+        - Works every market day
+        - No catalysts needed
+        - No earnings data needed
+        - Works with 1000 stocks
+        - Fast processing
 
-        **Expected Accuracy Improvement:**
-        - Before: 50-70% win rate
-        - After: 65-80% win rate (with 3 upgrades)
+        **VOLUME RATIO:**
+        - > 1.3x = Heavy (best)
+        - > 1.0x = Good (acceptable)
+        - < 1.0x = Weak (be careful)
         """)
 
         st.info("""
-        **📋 TRADING RULES (FINAL):**
+        **💡 HOW TO USE THIS:**
 
-        **Entry:**
-        - Wait 5-10 min after open (let volume confirm)
-        - Only enter HUGE/BIG category
-        - Must have ✅ Catalyst
-        - Must have ✅ Sustained Volume
-        - Must NOT be exhausted
+        1. **Run during market hours** (any time)
+        2. **Check STRONG BUY first** (4-5% with volume)
+        3. **Entry strategy:**
+           - Don't chase at high of day
+           - Wait for pullback to support
+           - Enter with stop loss 2% below
 
-        **Targets:**
-        - Take 50% at +5%
-        - Trail rest with 3% stop
+        4. **Exit strategy:**
+           - Take profits at 2-3% (partial)
+           - Trail stop on rest
+           - Or hold for next day if strong
 
-        **Exit Rules:**
-        - MUST exit by EOD (never hold overnight)
+        5. **Quality check:**
+           - Only stocks you'd hold long-term
+           - Avoid penny stocks (already filtered)
+           - Check for news/earnings
 
-        **Risk Management:**
-        - Max risk: 1% account
-        - Stop: Previous support or -2%
+        **Daily Routine:**
+        - Run screener every morning at 10 AM
+        - Check STRONG BUY stocks
+        - Add to watchlist for entry opportunities
+        - Monitor during day for pullbacks
+        - Exit before market close or next day
         """)
 
     else:
-        st.warning("❌ No gap ups match all 3 upgrade criteria.")
+        st.warning("⏳ No stocks moving 4-5% today yet...")
+        st.info("""
+        **Why no results?**
+        - Market might be slow/range-bound
+        - Most stocks not moving enough
+        - Check back in 1-2 hours
+        - Or come back tomorrow
+
+        **This is NORMAL** - not every day has 4-5% movers
+        """)
 
 else:
-    st.info("📝 watchlist2.csv is empty or missing. Add tickers to begin.")
+    st.error("❌ watchlist.csv is empty!")
+    st.info("📝 Add tickers to watchlist.csv (one per line with company names)")
 
 st.divider()
-st.success("""
-**🎯 FINAL STATUS: STRATEGY UPGRADED & READY**
-
-✅ All 3 upgrades integrated
-✅ Expected accuracy: 65-80%
-✅ Using watchlist2.csv
-✅ Professional-grade validation
-""")
-
-st.caption("V2.0 - Enhanced with 3-layer validation | Catalyst + Volume + Exhaustion checks")
+st.caption("📈 Daily Stock Scanner v1.0 | Find 4-5% movers | Quality Stocks Only")
