@@ -957,19 +957,33 @@ def fetch_safe(ticker):
 
 
 def validate_data_timing(df):
-    """Validate that last 2 rows are consecutive trading days"""
+    """Validate that last 2 rows are real trading days with valid timestamps."""
     if df.empty or len(df) < 2:
         return False
 
-    today_date = df.index[-1]
-    yesterday_date = df.index[-2]
-
-    date_diff = (today_date - yesterday_date).days
-
-    if date_diff > 3:
+    try:
+        df.index = pd.to_datetime(df.index)
+    except:
         return False
 
-    return True
+    dates = df.index[-2:]
+
+    if dates.isna().any():
+        return False
+
+    today_date = dates[-1]
+    yesterday_date = dates[-2]
+
+    if not isinstance(today_date, pd.Timestamp) or not isinstance(yesterday_date, pd.Timestamp):
+        return False
+
+    date_diff = (today_date.normalize() - yesterday_date.normalize()).days
+
+    if 1 <= date_diff <= 3:
+        return True
+
+    return False
+
 
 
 # ================== UPGRADE #1: NEWS CATALYST DETECTION ==================
