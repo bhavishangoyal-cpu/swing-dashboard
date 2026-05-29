@@ -848,7 +848,14 @@ def load_ticker_to_name_gap():
 
     return ticker_dict
 
+# ================== GAP-UP SCREENER WATCHLIST ==================
+
 watch_df = pd.read_csv("watchlist2.csv")
+
+tickers_gap = [t.strip().upper() for t in watch_df['Yahoo Ticker'].dropna() if t.strip()]
+companies_gap = {row['Yahoo Ticker'].strip().upper(): row['Company Name'] for _, row in watch_df.iterrows()}
+
+
 
 # ================== PAGE CONFIG ==================
 
