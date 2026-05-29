@@ -822,7 +822,7 @@ def fetch_news_flag(ticker):
 
 # ================== HELPER FUNCTIONS ==================
 
-def load_watchlist():
+def load_watchlist_gap():
     """Load tickers from watchlist2.csv (CHANGED)"""
     csv_path = "watchlist2.csv"
     if os.path.exists(csv_path):
@@ -831,7 +831,7 @@ def load_watchlist():
     return []
 
 
-def load_ticker_to_name():
+def load_ticker_to_name_gap():
     """Load ticker to company name mapping from watchlist2.csv"""
     csv_path = "watchlist2.csv"
     ticker_dict = {}
@@ -1384,9 +1384,9 @@ def get_gap_signal_FINAL(metrics, market_bullish, vix_value, catalyst_info, volu
 # ================== STREAMLIT UI ==================
 
 if 'watchlist' not in st.session_state:
-    st.session_state.watchlist = load_watchlist()
+    st.session_state.watchlist = load_watchlist_gap()
 
-ticker_to_name = load_ticker_to_name()
+ticker_to_name_gap = load_ticker_to_name_gap()
 
 # ===== MARKET STATUS =====
 st.markdown("---")
@@ -1468,7 +1468,7 @@ if st.session_state.watchlist:
         if metrics['Gap %'] >= 3 and signal not in ["NO GAP", "⏭️ SKIP", "EXHAUSTED", "WEAK"]:
             results.append({
                 'Ticker': ticker,
-                'Company Name': ticker_to_name.get(ticker, "-"),
+                'Company Name': ticker_to_name_gap.get(ticker, "-"),
                 'Gap %': round(metrics['Gap %'], 2),
                 'Open': round(metrics['Open'], 2),
                 'High': round(metrics['High'], 2),
