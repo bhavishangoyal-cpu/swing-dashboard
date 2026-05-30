@@ -822,496 +822,278 @@ def fetch_news_flag(ticker):
 
 #PROGRAM - 3 - GAPUP
 # ================== HELPER FUNCTIONS ==================
-import requests
-from bs4 import BeautifulSoup
-import json
+import streamlit as st
+import pandas as pd
+import yfinance as yf
 
-
+# -----------------------------
+# LOAD WATCHLIST (WITH COMPANY)
+# -----------------------------
 def load_watchlist():
-    """Load tickers from CSV"""
-    csv_path = "watchlist.csv"
-    if os.path.exists(csv_path):
-        try:
-            df = pd.read_csv(csv_path)
-            tickers = df.iloc[:, 0].tolist()
-            return [str(t).strip().upper() for t in tickers if str(t).strip()]
-        except:
-            return []
-    return []
+    df = pd.read_csv("watchlist.csv")
+    return df[["Yahoo Ticker", "Company Name"]]
 
+watchlist = load_watchlist()
 
-def load_ticker_to_name():
-    """Load ticker to company name"""
-    csv_path = "watchlist.csv"
-    ticker_dict = {}
-
-    if os.path.exists(csv_path):
-        try:
-            df = pd.read_csv(csv_path)
-            ticker_col = df.columns[0]
-            name_col = df.columns[1] if len(df.columns) > 1 else None
-
-            for idx, row in df.iterrows():
-                ticker = str(row[ticker_col]).strip().upper()
-                name = str(row[name_col]).strip() if name_col else ticker
-                ticker_dict[ticker] = name if name and name != 'nan' else ticker
-        except:
-            pass
-
-    return ticker_dict
-
-
-# ================== PAGE CONFIG ==================
-
-st.set_page_config(page_title="Predictive Day Trading", layout="wide")
-st.title("🔮 Predictive Day Trading Screener")
-
-st.markdown("""
-**PURPOSE:** Predict which stocks will move BIG TODAY (4-5%+)
-
-**TIMING:** Run at market open or before (9:30 AM)
-
-**FACTORS:** Earnings + News + Technical + Volatility Signals
-
-**GOAL:** Identify stocks with HIGH probability of 4-5% move TODAY
-
-**PROFIT:** Enter at open, exit before close (day trading)
-""")
-
-
-# ================== DATA COLLECTION ==================
-
-@st.cache_data(ttl=300)
-def check_earnings_today(ticker):
-    """Check if stock has earnings today"""
+# -----------------------------
+# FETCH YAHOO PREMARKET DATA
+# -----------------------------
+def get_premarket_data(ticker):
     try:
-        info = yf.Ticker(ticker).info
-
-        if 'earningsDate' in info:
-            earnings_date = info['earningsDate']
-            if isinstance(earnings_date, (int, float)):
-                earnings_date = datetime.fromtimestamp(earnings_date)
-            elif isinstance(earnings_date, str):
-                earnings_date = datetime.strptime(earnings_date, '%Y-%m-%d')
-
-            today = datetime.now().date()
-            earnings_today = earnings_date.date() == today
-
-            return earnings_today, earnings_date if earnings_today else None
-    except:
-        pass
-
-    return False, None
-
-
-@st.cache_data(ttl=600)
-def fetch_stock_info(ticker):
-    """Fetch stock info for analysis"""
-    try:
-        info = yf.Ticker(ticker).info
-
-        return {
-            'price': info.get('currentPrice', 0),
-            'market_cap': info.get('marketCap', 0),
-            '52_week_high': info.get('fiftyTwoWeekHigh', 0),
-            '52_week_low': info.get('fiftyTwoWeekLow', 0),
-            'avg_volume': info.get('averageVolume', 0),
-            'pe_ratio': info.get('trailingPE', 0),
-            'sector': info.get('sector', 'Unknown'),
-            'dividend_yield': info.get('dividendYield', 0)
-        }
-    except:
-        return None
-
-
-@st.cache_data(ttl=600)
-def fetch_technical_data(ticker):
-    """Fetch technical data for prediction"""
-    try:
-        # Get last 60 days
-        df = yf.download(ticker, period="60d", progress=False, auto_adjust=True)
-
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
-
-        if df is None or df.empty or len(df) < 10:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="2d", interval="1m", prepost=True)
+        if hist.empty:
             return None
 
-        # Calculate metrics
-        df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
-        df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
-        df['RSI'] = calculate_rsi(df['Close'], 14)
-        df['ATR'] = calculate_atr(df, 14)
-        df['ATR_Pct'] = (df['ATR'] / df['Close']) * 100
-        df['Volume_MA'] = df['Volume'].rolling(20).mean()
-        df['Volume_Ratio'] = df['Volume'] / df['Volume_MA']
+        pre = hist.between_time("04:00", "09:29")
+        if pre.empty:
+            return None
 
-        return df
+        last_pre = pre["Close"].iloc[-1]
+        yesterday_close = hist["Close"].iloc[0]
+
+        gap_pct = ((last_pre - yesterday_close) / yesterday_close) * 100
+
+        pre_vol = pre["Volume"].sum()
+        avg_vol = stock.info.get("averageVolume", 1)
+        vol_ratio = pre_vol / avg_vol if avg_vol and avg_vol > 0 else 0
+
+        return gap_pct, vol_ratio
     except:
         return None
 
-
-def calculate_rsi(prices, period=14):
-    """Calculate RSI"""
+# -----------------------------
+# NEWS CATALYST DETECTION
+# -----------------------------
+def get_news_catalyst(ticker):
     try:
-        delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        return rsi
+        stock = yf.Ticker(ticker)
+        news = stock.news
+        if not news:
+            return None
+
+        headline = news[0]["title"].lower()
+
+        if "beat" in headline or "earnings" in headline:
+            return "Earnings beat"
+        if "fda" in headline or "approval" in headline:
+            return "FDA approval"
+        if "acquire" in headline or "acquisition" in headline:
+            return "Acquisition"
+        if "upgrade" in headline:
+            return "Analyst upgrade"
+        if "contract" in headline:
+            return "New contract"
+        if "launch" in headline:
+            return "Product launch"
+
+        return None
     except:
-        return pd.Series([50] * len(prices))
+        return None
 
+# -----------------------------
+# SECTOR ETF MAP
+# -----------------------------
+sector_map = {
+    "NVDA": "SMH", "AMD": "SMH", "AVGO": "SMH", "ASML": "SMH", "LRCX": "SMH", "KLAC": "SMH",
+    "MSFT": "XLK", "AAPL": "XLK", "META": "XLK", "GOOGL": "XLK", "CRM": "XLK", "NOW": "XLK",
+    "PANW": "XLK", "CRWD": "XLK",
+    "JPM": "XLF", "GS": "XLF",
+    "XOM": "XLE", "CVX": "XLE",
+    "CAT": "XLI", "DE": "XLI",
+    "LLY": "XLV", "UNH": "XLV", "ABBV": "XLV",
+    "SPY": "SPY", "QQQ": "QQQ", "VTI": "VTI", "XLK": "XLK", "SMH": "SMH", "XLF": "XLF", "XLE": "XLE"
+}
 
-def calculate_atr(df, period=14):
-    """Calculate ATR"""
+def get_sector_change(ticker):
+    etf = sector_map.get(ticker, "SPY")
     try:
-        df = df.copy()
-        df['H-L'] = df['High'] - df['Low']
-        df['H-C'] = abs(df['High'] - df['Close'].shift())
-        df['L-C'] = abs(df['Low'] - df['Close'].shift())
-        df['TR'] = df[['H-L', 'H-C', 'L-C']].max(axis=1)
-        atr = df['TR'].rolling(period).mean()
-        return atr
+        data = yf.Ticker(etf).history(period="2d", interval="1m", prepost=True)
+        if data.empty:
+            return 0
+        pre = data.between_time("04:00", "09:29")
+        if pre.empty:
+            return 0
+        last_pre = pre["Close"].iloc[-1]
+        prev_close = data["Close"].iloc[0]
+        return ((last_pre - prev_close) / prev_close) * 100
     except:
-        return pd.Series([0] * len(df))
+        return 0
 
+# -----------------------------
+# FUTURES (SPY + NASDAQ VIA QQQ)
+# -----------------------------
+def get_futures():
+    try:
+        spy = yf.Ticker("SPY").history(period="2d", interval="1m", prepost=True)
+        qqq = yf.Ticker("QQQ").history(period="2d", interval="1m", prepost=True)
 
-def predict_big_move(ticker, info, tech_df):
-    """PREDICT if stock will move big today"""
-    if info is None or tech_df is None:
-        return "ERROR", 0, "Missing data"
+        if spy.empty or qqq.empty:
+            return 0, 0
 
+        spy_pre = spy.between_time("04:00", "09:29")
+        qqq_pre = qqq.between_time("04:00", "09:29")
+
+        if spy_pre.empty or qqq_pre.empty:
+            return 0, 0
+
+        spy_pct = ((spy_pre["Close"].iloc[-1] - spy["Close"].iloc[0]) / spy["Close"].iloc[0]) * 100
+        qqq_pct = ((qqq_pre["Close"].iloc[-1] - qqq["Close"].iloc[0]) / qqq["Close"].iloc[0]) * 100
+
+        return spy_pct, qqq_pct
+    except:
+        return 0, 0
+
+spy_fut_pct, qqq_fut_pct = get_futures()
+
+# -----------------------------
+# SCORING ENGINE
+# -----------------------------
+def compute_score(gap_pct, vol_ratio, news, sector_pct, futures_pct):
     score = 0
-    reasons = []
 
-    try:
-        # ===== FACTOR 1: TECHNICAL SETUP (Most important for day trading) =====
-        last = tech_df.iloc[-1]
+    # Gap (25%)
+    if gap_pct >= 8:
+        score += 25
+    elif gap_pct >= 5:
+        score += 20
+    elif gap_pct >= 3:
+        score += 15
+    elif gap_pct >= 2:
+        score += 10
+    elif gap_pct >= 1:
+        score += 5
 
-        # Volatility
-        atr_pct = float(last.get('ATR_Pct', 0))
-        if atr_pct > 3:
+    # Volume (20%)
+    if vol_ratio >= 10:
+        score += 20
+    elif vol_ratio >= 5:
+        score += 15
+    elif vol_ratio >= 2:
+        score += 10
+    elif vol_ratio >= 1:
+        score += 5
+
+    # News (25%)
+    if news:
+        n = news.lower()
+        if "earnings" in n or "beat" in n:
             score += 25
-            reasons.append(f"📊 High volatility: {atr_pct:.1f}% ATR")
-        elif atr_pct > 2:
+        elif "fda" in n:
+            score += 25
+        elif "acquisition" in n:
+            score += 25
+        elif "guidance" in n:
+            score += 20
+        elif "upgrade" in n:
             score += 15
-            reasons.append(f"📊 Good volatility: {atr_pct:.1f}% ATR")
-        elif atr_pct > 1.5:
-            score += 8
-            reasons.append(f"📊 Normal volatility: {atr_pct:.1f}% ATR")
-        else:
-            reasons.append(f"⚠️ Low volatility: {atr_pct:.1f}% ATR")
-
-        # Trend
-        close = float(last.get('Close', 0))
-        ema20 = float(last.get('EMA20', 0))
-        ema50 = float(last.get('EMA50', 0))
-
-        if close > ema20 > ema50:
+        elif "contract" in n:
             score += 15
-            reasons.append("✅ Strong uptrend")
-        elif close < ema20 < ema50:
-            score += 5
-            reasons.append("⚠️ Downtrend (risky)")
-        else:
-            score += 8
-            reasons.append("➡️ Mixed trend")
-
-        # RSI extremes (suggests move coming)
-        rsi = float(last.get('RSI', 50))
-        if rsi > 70:
+        elif "launch" in n:
             score += 10
-            reasons.append(f"⬆️ Overbought RSI {rsi:.0f} (pullback or reversal)")
-        elif rsi < 30:
-            score += 10
-            reasons.append(f"⬇️ Oversold RSI {rsi:.0f} (bounce coming)")
-        else:
-            score += 5
-            reasons.append(f"↔️ RSI neutral {rsi:.0f}")
 
-        # Volume trend
-        vol_ratio = float(last.get('Volume_Ratio', 0))
-        if vol_ratio > 1.5:
-            score += 15
-            reasons.append(f"💪 Volume spike: {vol_ratio:.1f}x")
-        elif vol_ratio > 1.2:
-            score += 10
-            reasons.append(f"📈 High volume: {vol_ratio:.1f}x")
-        else:
-            score += 5
-            reasons.append(f"📉 Normal volume: {vol_ratio:.1f}x")
+    # Sector (10%)
+    if sector_pct >= 2:
+        score += 10
+    elif sector_pct >= 1:
+        score += 5
 
-        # ===== FACTOR 2: FUNDAMENTAL SETUP =====
-        price = info['price']
+    # Futures (10%)
+    if futures_pct >= 1:
+        score += 10
+    elif futures_pct >= 0.5:
+        score += 5
 
-        # Price near 52-week extremes (suggests volatility)
-        high_52w = info['52_week_high']
-        low_52w = info['52_week_low']
+    return score
 
-        if high_52w > 0:
-            distance_to_high = ((high_52w - price) / high_52w) * 100
-            if distance_to_high < 5:
-                score += 15
-                reasons.append(f"🔥 Near 52-week high ({distance_to_high:.1f}%)")
-            elif distance_to_high > 30:
-                score += 12
-                reasons.append(f"🔵 Far from high ({distance_to_high:.1f}%) - room to run")
-
-        # Market cap (exclude microcaps)
-        market_cap = info['market_cap']
-        if market_cap > 1000000000:  # > $1B
-            score += 5
-            reasons.append("✅ Good market cap")
-        else:
-            score -= 10
-            reasons.append("❌ Small market cap - risky")
-
-        # ===== FACTOR 3: CATALYSTS =====
-        # Check for earnings
-        has_earnings, earnings_date = check_earnings_today(ticker)
-        if has_earnings:
-            score += 40
-            reasons.append("🔴 EARNINGS TODAY - Likely big move")
-
-        # ===== FACTOR 4: SECTOR MOMENTUM =====
-        sector = info['sector']
-        if sector and sector != 'Unknown':
-            reasons.append(f"📌 Sector: {sector}")
-
-        # ===== FINAL SCORE & SIGNAL =====
-        final_score = min(max(score, 0), 100)
-        reason_text = " | ".join(reasons)
-
-        if final_score >= 80:
-            signal = "🔥 HIGH PROBABILITY MOVER"
-        elif final_score >= 65:
-            signal = "⚡ LIKELY TO MOVE"
-        elif final_score >= 50:
-            signal = "👍 POSSIBLE MOVER"
-        elif final_score >= 35:
-            signal = "⚠️ RISKY"
-        else:
-            signal = "❌ SKIP"
-
-        return signal, final_score, reason_text
-
-    except Exception as e:
-        return "ERROR", 0, str(e)
-
-
-# ================== STREAMLIT UI ==================
-
-if 'watchlist' not in st.session_state:
-    st.session_state.watchlist = load_watchlist()
-
-ticker_to_name = load_ticker_to_name()
-
-# ===== MARKET TIME =====
-st.markdown("---")
-
-now = datetime.now()
-market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
-market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.info(f"📊 Stocks: {len(st.session_state.watchlist)}")
-
-with col2:
-    current_time = now.strftime("%H:%M")
-    if now < market_open:
-        time_until = int((market_open - now).total_seconds() / 60)
-        st.warning(f"⏰ Opens in {time_until} min")
-    elif now > market_close:
-        st.error("🔴 Market closed")
+# -----------------------------
+# LABEL HELPERS
+# -----------------------------
+def buy_signal(score, news, vol_ratio):
+    if score >= 70 and news != "None" and vol_ratio >= 2:
+        return "BUY"
+    elif score >= 50:
+        return "WATCH"
     else:
-        st.success(f"🟢 OPEN ({current_time})")
+        return "IGNORE"
 
-with col3:
-    st.info("🎯 Best at 9:30 AM")
-
-st.markdown("---")
-
-# Auto-refresh every 2 minutes
-st_autorefresh(interval=120000)
-
-# Analysis
-if st.session_state.watchlist and len(st.session_state.watchlist) > 0:
-    st.info(f"🔮 Predicting {len(st.session_state.watchlist)} stocks...")
-
-    results = []
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    for idx, ticker in enumerate(st.session_state.watchlist):
-        if idx % 50 == 0:
-            status_text.write(f"⏳ {ticker}... ({idx}/{len(st.session_state.watchlist)})")
-
-        info = fetch_stock_info(ticker)
-        tech_df = fetch_technical_data(ticker)
-
-        if info is None or tech_df is None:
-            progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
-            time.sleep(0.05)
-            continue
-
-        signal, score, reason = predict_big_move(ticker, info, tech_df)
-
-        # Include if score >= 30 (worth watching)
-        if score >= 30:
-            results.append({
-                'Ticker': ticker,
-                'Company': ticker_to_name.get(ticker, "-"),
-                'Price': round(info['price'], 2),
-                'Volume': f"{int(info['avg_volume'] / 1000000)}M" if info[
-                                                                         'avg_volume'] > 1000000 else f"{int(info['avg_volume'] / 1000)}K",
-                'Sector': info['sector'],
-                '52W High': round(info['52_week_high'], 2),
-                '52W Low': round(info['52_week_low'], 2),
-                'Signal': signal,
-                'Reason': reason,
-                'Score': score
-            })
-
-        progress_bar.progress((idx + 1) / len(st.session_state.watchlist))
-        time.sleep(0.05)
-
-    progress_bar.empty()
-    status_text.empty()
-
-    if results and len(results) > 0:
-        df_results = pd.DataFrame(results)
-        df_results = df_results.sort_values('Score', ascending=False)
-
-        # ===== HIGH PROBABILITY =====
-        high_prob = df_results[df_results['Score'] >= 80]
-
-        st.subheader(f"🔥 HIGH PROBABILITY MOVERS - {len(high_prob)} Stock(s)")
-        if len(high_prob) > 0:
-            st.error("⚡ BEST CANDIDATES - Likely 4-5%+ move TODAY!")
-            st.dataframe(
-                high_prob[['Ticker', 'Company', 'Price', 'Volume', 'Sector', '52W High', 'Score']],
-                use_container_width=True,
-                height=300
-            )
-            st.markdown("**WHY THEY'LL MOVE:**")
-            for idx, row in high_prob.iterrows():
-                st.write(f"**{row['Ticker']}** | {row['Reason']}")
-        else:
-            st.info("No high probability movers today")
-
-        # ===== LIKELY TO MOVE =====
-        likely = df_results[(df_results['Score'] >= 65) & (df_results['Score'] < 80)]
-
-        with st.expander(f"⚡ LIKELY TO MOVE - {len(likely)} Stock(s)"):
-            if len(likely) > 0:
-                st.warning("Good candidates for 3-5% move")
-                st.dataframe(
-                    likely[['Ticker', 'Company', 'Price', 'Volume', 'Sector', 'Score']],
-                    use_container_width=True,
-                    height=300
-                )
-            else:
-                st.info("No likely movers")
-
-        # ===== POSSIBLE =====
-        possible = df_results[(df_results['Score'] >= 50) & (df_results['Score'] < 65)]
-
-        with st.expander(f"👍 POSSIBLE - {len(possible)} Stock(s)"):
-            if len(possible) > 0:
-                st.dataframe(
-                    possible[['Ticker', 'Company', 'Price', 'Volume', 'Score']],
-                    use_container_width=True,
-                    height=300
-                )
-            else:
-                st.info("No possible movers")
-
-        # ===== SUMMARY =====
-        st.divider()
-        st.subheader("📊 Summary")
-
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("🔥 High Prob", len(high_prob))
-        with col2:
-            st.metric("⚡ Likely", len(likely))
-        with col3:
-            st.metric("👍 Possible", len(possible))
-        with col4:
-            st.metric("Total Signals", len(df_results))
-
-        st.success("""
-        **✅ HOW THIS WORKS:**
-
-        **PREDICTS Big Movers Based On:**
-        1. 📊 **Technical Setup** (Volatility, Trend, RSI, Volume)
-        2. 🎯 **Fundamental** (Price levels, Market cap)
-        3. 🔴 **Catalysts** (Earnings, News)
-        4. 📌 **Sector Momentum**
-
-        **🔥 HIGH PROBABILITY = 80+ Score**
-        - Has strong technical setup
-        - OR has earnings today
-        - OR volume spike detected
-        - Expected move: 4-5%+
-
-        **TRADING PLAN:**
-        ```
-        1. Identify HIGH PROBABILITY stocks
-        2. Enter at market open (9:30-10:00 AM)
-        3. Set target: +4-5%
-        4. Set stop: -2%
-        5. Exit before market close (3:00 PM)
-        ```
-
-        **Why This Works:**
-        - Uses multiple factors (not just 1 indicator)
-        - Catches catalysts (earnings = big move)
-        - Identifies technical setups ready to move
-        - Predicts BEFORE the move happens
-        - High probability = better win rate
-        """)
-
-        st.info("""
-        **💡 DAY TRADING RULES:**
-
-        ✅ **DO:**
-        - Only trade 🔥 HIGH PROBABILITY stocks
-        - Enter AT market open (9:30-10:00 AM)
-        - Set stop loss 2% below entry
-        - Take profits at 2-3% (don't be greedy)
-        - Exit before 3:00 PM (allow exit time)
-
-        ❌ **DON'T:**
-        - Trade stocks with score < 50
-        - Chase stocks that already moved
-        - Hold overnight (day trade only)
-        - Risk more than 1% account per trade
-        - Enter late (after 11:00 AM)
-
-        **Money Management:**
-        - Risk only 1% per trade
-        - Example: $10,000 account = max $100 risk
-        - If stop is 2%, buy 50 shares of $100 stock
-        """)
-
+def sector_strength_label(sector_pct):
+    if sector_pct >= 2:
+        return "Strong"
+    elif sector_pct >= 1:
+        return "Moderate"
     else:
-        st.warning("⏳ No strong signals today...")
-        st.info("""
-        **Why no predictions?**
-        - Market may be calm today
-        - No earnings/catalysts
-        - Technical setup weak
+        return "Weak"
 
-        **Check back at different times**
-        """)
+# -----------------------------
+# BUILD DATAFRAME
+# -----------------------------
+rows = []
 
+for _, row in watchlist.iterrows():
+    ticker = row["Yahoo Ticker"]
+    company = row["Company Name"]
+
+    pm = get_premarket_data(ticker)
+    if pm is None:
+        continue
+
+    gap_pct, vol_ratio = pm
+    news = get_news_catalyst(ticker)
+    sector_pct = get_sector_change(ticker)
+
+    # Use SPY futures for all; you could switch to qqq_fut_pct for tech if you want
+    score = compute_score(gap_pct, vol_ratio, news, sector_pct, spy_fut_pct)
+
+    rows.append({
+        "Ticker": ticker,
+        "Company": company,
+        "Gap %": gap_pct,
+        "Volume Ratio": vol_ratio,
+        "News": news or "None",
+        "Sector %": sector_pct,
+        "SPY Futures %": spy_fut_pct,
+        "Score": score
+    })
+
+df = pd.DataFrame(rows)
+
+if not df.empty:
+    df = df.sort_values("Score", ascending=False).reset_index(drop=True)
+
+    df["Buy Signal"] = df.apply(
+        lambda r: buy_signal(r["Score"], r["News"], r["Volume Ratio"]),
+        axis=1
+    )
+    df["Sector Strength"] = df["Sector %"].apply(sector_strength_label)
+
+# -----------------------------
+# STREAMLIT UI
+# -----------------------------
+st.set_page_config(page_title="Pre‑Market Probability Scanner", layout="wide")
+st.title("📈 Pre‑Market Probability Scanner (0–100 Score)")
+
+if df.empty:
+    st.warning("No valid pre‑market data found for your watchlist.")
 else:
-    st.error("❌ watchlist.csv is empty!")
+    def color_score(val):
+        if val >= 75:
+            return "background-color:#145A32;color:white;"
+        elif val >= 50:
+            return "background-color:#F1C40F;color:black;"
+        else:
+            return "background-color:#922B21;color:white;"
 
-st.divider()
-st.caption("🔮 Predictive Day Trading Screener v1.0 | Predicts big movers TODAY")
+    styled = (
+        df.style
+        .applymap(color_score, subset=["Score"])
+        .format({
+            "Gap %": "{:.2f}%",
+            "Volume Ratio": "{:.1f}x",
+            "Sector %": "{:.2f}%",
+            "SPY Futures %": "{:.2f}%",
+            "Score": "{:.0f}"
+        })
+    )
+
+    st.dataframe(styled, use_container_width=True)
