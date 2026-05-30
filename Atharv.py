@@ -1,275 +1,45 @@
-import streamlit as st
-import pandas as pd
-import yfinance as yf
+# ============================
+# 📘 DEFINITIONS DROPDOWN
+# ============================
 
-# -----------------------------
-# LOAD WATCHLIST (WITH COMPANY)
-# -----------------------------
-def load_watchlist():
-    df = pd.read_csv("watchlist.csv")
-    return df[["Yahoo Ticker", "Company Name"]]
+st.markdown("---")
+st.header("📘 Indicator & Strategy Definitions")
 
-watchlist = load_watchlist()
+definitions = {
+    # ---------- STRATEGY 1 ----------
+    "EMA20": "Short‑term trend line. Price above EMA20 = bullish momentum.",
+    "EMA50": "Medium‑term trend line. EMA20 > EMA50 = strong uptrend.",
+    "MACD": "Momentum indicator. MACD > Signal = bullish momentum.",
+    "MACD Histogram": "Shows momentum strength. Rising histogram = increasing momentum.",
+    "RSI": "Measures overbought/oversold. Below 65 = safe for pullback buys.",
+    "ATR%": "Volatility percentage. Higher ATR% = bigger expected moves.",
+    "Volume Ratio": "Current volume ÷ average volume. >1.2 = strong interest.",
+    "Support Level": "Recent swing low where buyers stepped in.",
+    "Distance to Support": "How far price is from support (in %). Closer = safer.",
+    "Pullback to EMA20": "Price dips to EMA20 inside an uptrend. A high‑probability swing entry.",
+    "Breakout Above 5‑Day High": "Price breaks above recent resistance. Momentum entry.",
+    "Bullish Divergence": "Price makes lower low but RSI makes higher low. Signals reversal.",
+    "ADX": "Trend strength indicator. >25 = strong trend.",
+    "SPY Market Context": "Checks if overall market is bullish.",
+    "VIX Condition": "Measures market fear. Low VIX = safe. High VIX = avoid trading.",
 
-# -----------------------------
-# FETCH YAHOO PREMARKET DATA
-# -----------------------------
-def get_premarket_data(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="2d", interval="1m", prepost=True)
-        if hist.empty:
-            return None
+    # ---------- STRATEGY 2 ----------
+    "52‑Week High": "Highest price in the last 252 trading days.",
+    "Drop %": "How far the stock is below its 52‑week high.",
+    "Drop Buckets": "Groups stocks by drop %: <10%, 10–20%, 20–30%, 30–40%, 40–50%.",
 
-        pre = hist.between_time("04:00", "09:29")
-        if pre.empty:
-            return None
-
-        last_pre = pre["Close"].iloc[-1]
-        yesterday_close = hist["Close"].iloc[0]
-
-        gap_pct = ((last_pre - yesterday_close) / yesterday_close) * 100
-
-        pre_vol = pre["Volume"].sum()
-        avg_vol = stock.info.get("averageVolume", 1)
-        vol_ratio = pre_vol / avg_vol if avg_vol and avg_vol > 0 else 0
-
-        return gap_pct, vol_ratio
-    except:
-        return None
-
-# -----------------------------
-# NEWS CATALYST DETECTION
-# -----------------------------
-def get_news_catalyst(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        news = stock.news
-        if not news:
-            return None
-
-        headline = news[0]["title"].lower()
-
-        if "beat" in headline or "earnings" in headline:
-            return "Earnings beat"
-        if "fda" in headline or "approval" in headline:
-            return "FDA approval"
-        if "acquire" in headline or "acquisition" in headline:
-            return "Acquisition"
-        if "upgrade" in headline:
-            return "Analyst upgrade"
-        if "contract" in headline:
-            return "New contract"
-        if "launch" in headline:
-            return "Product launch"
-
-        return None
-    except:
-        return None
-
-# -----------------------------
-# SECTOR ETF MAP
-# -----------------------------
-sector_map = {
-    "NVDA": "SMH", "AMD": "SMH", "AVGO": "SMH", "ASML": "SMH", "LRCX": "SMH", "KLAC": "SMH",
-    "MSFT": "XLK", "AAPL": "XLK", "META": "XLK", "GOOGL": "XLK", "CRM": "XLK", "NOW": "XLK",
-    "PANW": "XLK", "CRWD": "XLK",
-    "JPM": "XLF", "GS": "XLF",
-    "XOM": "XLE", "CVX": "XLE",
-    "CAT": "XLI", "DE": "XLI",
-    "LLY": "XLV", "UNH": "XLV", "ABBV": "XLV",
-    "SPY": "SPY", "QQQ": "QQQ", "VTI": "VTI", "XLK": "XLK", "SMH": "SMH", "XLF": "XLF", "XLE": "XLE"
+    # ---------- STRATEGY 3 ----------
+    "Yesterday Close": "Last price at 4:00 PM previous day.",
+    "Premarket Close": "Last traded price before today's market opens (9:29 AM).",
+    "Gap %": "(Premarket Close − Yesterday Close) ÷ Yesterday Close × 100.",
+    "Premarket Volume": "Total volume traded between 4:00 AM and 9:29 AM.",
+    "News Catalyst": "Type of news causing the gap: earnings, FDA, acquisition, upgrade, contract, launch.",
+    "Sector Strength": "Checks if the stock’s sector ETF is green.",
+    "SPY Futures %": "Shows overall market direction before open.",
+    "BUY / WATCH / IGNORE": "Signal based on score and indicators.",
+    "Score (0–100)": "Probability score based on gap%, volume ratio, news, sector, futures, trend, volatility."
 }
 
-def get_sector_change(ticker):
-    etf = sector_map.get(ticker, "SPY")
-    try:
-        data = yf.Ticker(etf).history(period="2d", interval="1m", prepost=True)
-        if data.empty:
-            return 0
-        pre = data.between_time("04:00", "09:29")
-        if pre.empty:
-            return 0
-        last_pre = pre["Close"].iloc[-1]
-        prev_close = data["Close"].iloc[0]
-        return ((last_pre - prev_close) / prev_close) * 100
-    except:
-        return 0
+selected_term = st.selectbox("Select a term to view its definition:", list(definitions.keys()))
 
-# -----------------------------
-# FUTURES (SPY + NASDAQ VIA QQQ)
-# -----------------------------
-def get_futures():
-    try:
-        spy = yf.Ticker("SPY").history(period="2d", interval="1m", prepost=True)
-        qqq = yf.Ticker("QQQ").history(period="2d", interval="1m", prepost=True)
-
-        if spy.empty or qqq.empty:
-            return 0, 0
-
-        spy_pre = spy.between_time("04:00", "09:29")
-        qqq_pre = qqq.between_time("04:00", "09:29")
-
-        if spy_pre.empty or qqq_pre.empty:
-            return 0, 0
-
-        spy_pct = ((spy_pre["Close"].iloc[-1] - spy["Close"].iloc[0]) / spy["Close"].iloc[0]) * 100
-        qqq_pct = ((qqq_pre["Close"].iloc[-1] - qqq["Close"].iloc[0]) / qqq["Close"].iloc[0]) * 100
-
-        return spy_pct, qqq_pct
-    except:
-        return 0, 0
-
-spy_fut_pct, qqq_fut_pct = get_futures()
-
-# -----------------------------
-# SCORING ENGINE
-# -----------------------------
-def compute_score(gap_pct, vol_ratio, news, sector_pct, futures_pct):
-    score = 0
-
-    # Gap (25%)
-    if gap_pct >= 8:
-        score += 25
-    elif gap_pct >= 5:
-        score += 20
-    elif gap_pct >= 3:
-        score += 15
-    elif gap_pct >= 2:
-        score += 10
-    elif gap_pct >= 1:
-        score += 5
-
-    # Volume (20%)
-    if vol_ratio >= 10:
-        score += 20
-    elif vol_ratio >= 5:
-        score += 15
-    elif vol_ratio >= 2:
-        score += 10
-    elif vol_ratio >= 1:
-        score += 5
-
-    # News (25%)
-    if news:
-        n = news.lower()
-        if "earnings" in n or "beat" in n:
-            score += 25
-        elif "fda" in n:
-            score += 25
-        elif "acquisition" in n:
-            score += 25
-        elif "guidance" in n:
-            score += 20
-        elif "upgrade" in n:
-            score += 15
-        elif "contract" in n:
-            score += 15
-        elif "launch" in n:
-            score += 10
-
-    # Sector (10%)
-    if sector_pct >= 2:
-        score += 10
-    elif sector_pct >= 1:
-        score += 5
-
-    # Futures (10%)
-    if futures_pct >= 1:
-        score += 10
-    elif futures_pct >= 0.5:
-        score += 5
-
-    return score
-
-# -----------------------------
-# LABEL HELPERS
-# -----------------------------
-def buy_signal(score, news, vol_ratio):
-    if score >= 70 and news != "None" and vol_ratio >= 2:
-        return "BUY"
-    elif score >= 50:
-        return "WATCH"
-    else:
-        return "IGNORE"
-
-def sector_strength_label(sector_pct):
-    if sector_pct >= 2:
-        return "Strong"
-    elif sector_pct >= 1:
-        return "Moderate"
-    else:
-        return "Weak"
-
-# -----------------------------
-# BUILD DATAFRAME
-# -----------------------------
-rows = []
-
-for _, row in watchlist.iterrows():
-    ticker = row["Yahoo Ticker"]
-    company = row["Company Name"]
-
-    pm = get_premarket_data(ticker)
-    if pm is None:
-        continue
-
-    gap_pct, vol_ratio = pm
-    news = get_news_catalyst(ticker)
-    sector_pct = get_sector_change(ticker)
-
-    # Use SPY futures for all; you could switch to qqq_fut_pct for tech if you want
-    score = compute_score(gap_pct, vol_ratio, news, sector_pct, spy_fut_pct)
-
-    rows.append({
-        "Ticker": ticker,
-        "Company": company,
-        "Gap %": gap_pct,
-        "Volume Ratio": vol_ratio,
-        "News": news or "None",
-        "Sector %": sector_pct,
-        "SPY Futures %": spy_fut_pct,
-        "Score": score
-    })
-
-df = pd.DataFrame(rows)
-
-if not df.empty:
-    df = df.sort_values("Score", ascending=False).reset_index(drop=True)
-
-    df["Buy Signal"] = df.apply(
-        lambda r: buy_signal(r["Score"], r["News"], r["Volume Ratio"]),
-        axis=1
-    )
-    df["Sector Strength"] = df["Sector %"].apply(sector_strength_label)
-
-# -----------------------------
-# STREAMLIT UI
-# -----------------------------
-st.set_page_config(page_title="Pre‑Market Probability Scanner", layout="wide")
-st.title("📈 Pre‑Market Probability Scanner (0–100 Score)")
-
-if df.empty:
-    st.warning("No valid pre‑market data found for your watchlist.")
-else:
-    def color_score(val):
-        if val >= 75:
-            return "background-color:#145A32;color:white;"
-        elif val >= 50:
-            return "background-color:#F1C40F;color:black;"
-        else:
-            return "background-color:#922B21;color:white;"
-
-    styled = (
-        df.style
-        .applymap(color_score, subset=["Score"])
-        .format({
-            "Gap %": "{:.2f}%",
-            "Volume Ratio": "{:.1f}x",
-            "Sector %": "{:.2f}%",
-            "SPY Futures %": "{:.2f}%",
-            "Score": "{:.0f}"
-        })
-    )
-
-    st.dataframe(styled, use_container_width=True)
+st.info(definitions[selected_term])
