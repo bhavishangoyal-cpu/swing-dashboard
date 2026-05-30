@@ -1086,7 +1086,7 @@ else:
 
     styled = (
         df.style
-        .applymap(color_score, subset=["Score"])
+        .apply(lambda col: col.map(color_score), subset=["Score"])
         .format({
             "Gap %": "{:.2f}%",
             "Volume Ratio": "{:.1f}x",
