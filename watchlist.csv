@@ -1,32 +1,64 @@
-Rank,Country,Company Name,Yahoo Ticker
-1,US,NVIDIA Corporation,NVDA
-2,US,Microsoft Corporation,MSFT
-3,US,Apple Inc.,AAPL
-4,US,Amazon.com Inc.,AMZN
-5,US,Meta Platforms Inc.,META
-6,US,Alphabet Inc.,GOOGL
-7,US,Advanced Micro Devices,AMD
-8,US,Broadcom Inc.,AVGO
-9,US,ASML Holding,ASML
-10,US,Lam Research,LRCX
-11,US,KLA Corporation,KLAC
-12,US,ServiceNow,NOW
-13,US,Salesforce Inc.,CRM
-14,US,Palo Alto Networks,PANW
-15,US,CrowdStrike Holdings,CRWD
-16,US,JPMorgan Chase,JPM
-17,US,Goldman Sachs,GS
-18,US,Exxon Mobil,XOM
-19,US,Chevron Corp.,CVX
-20,US,Caterpillar Inc.,CAT
-21,US,Deere & Company,DE
-22,US,Eli Lilly,LLY
-23,US,UnitedHealth Group,UNH
-24,US,AbbVie Inc.,ABBV
-25,US,SPDR S&P 500 ETF Trust,SPY
-26,US,Invesco QQQ Trust,QQQ
-27,US,Vanguard Total Stock Market ETF,VTI
-28,US,Technology Select Sector SPDR,XLK
-29,US,VanEck Semiconductor ETF,SMH
-30,US,Financial Select Sector SPDR,XLF
-31,US,Energy Select Sector SPDR,XLE
+,Country,Company Name,Yahoo Ticker
+,US,AAPL,Apple Inc.
+,US,ABBV,AbbVie Inc.
+,US,ADBE,Adobe Inc.
+,US,AMZN,Amazon.com Inc.
+,US,ASML,ASML Holding
+,US,BAC,Bank of America
+,US,BLK,BlackRock Inc.
+,US,BMY,Bristol-Myers Squibb
+,US,CAT,Caterpillar Inc.
+,US,COP,ConocoPhillips
+,US,COST,Costco Wholesale
+,US,CRM,Salesforce Inc.
+,US,CRWD,CrowdStrike Holdings
+,US,CVX,Chevron Corporation
+,US,DE,Deere & Co.
+,US,DIA,Dow Jones Industrial Average ETF
+,US,EOG,EOG Resources
+,US,GE,General Electric
+,US,GOOGL,Alphabet Inc.
+,US,GS,Goldman Sachs
+,US,HD,Home Depot
+,US,HON,Honeywell International
+,US,IBM,International Business Machines
+,US,INTC,Intel Corporation
+,US,IWM,Russell 2000 ETF
+,US,JPM,JP Morgan Chase
+,US,KLAC,KLA Corporation
+,US,LMT,Lockheed Martin
+,US,LRCX,Lam Research
+,US,LLY,Eli Lilly
+,US,MCD,McDonald's Corporation
+,US,META,Meta Platforms
+,US,MRK,Merck & Co.
+,US,MS,Morgan Stanley
+,US,MSFT,Microsoft Corporation
+,US,MU,Micron Technology
+,US,NFLX,Netflix Inc.
+,US,NVDA,NVIDIA Corporation
+,US,ON,ON Semiconductor
+,US,ORCL,Oracle Corporation
+,US,PANW,Palo Alto Networks
+,US,PFE,Pfizer Inc.
+,US,QQQ,Invesco QQQ Trust
+,US,SBUX,Starbucks Corporation
+,US,SLB,Schlumberger
+,US,SMH,VanEck Semiconductor ETF
+,US,SPY,SPDR S&P 500 ETF
+,US,TSLA,Tesla Inc.
+,US,TSM,Taiwan Semiconductor
+,US,TXN,Texas Instruments
+,US,UNH,UnitedHealth Group
+,US,UPS,United Parcel Service
+,US,VRTX,Vertex Pharmaceuticals
+,US,VTI,Vanguard Total Market ETF
+,US,WFC,Wells Fargo
+,US,WMT,Walmart Inc.
+,US,XLE,Energy Select Sector ETF
+,US,XLF,Financial Select Sector ETF
+,US,XLI,Industrial Select Sector ETF
+,US,XLK,Technology Select Sector ETF
+,US,XLP,Consumer Staples ETF
+,US,XLV,Health Care Select Sector ETF
+,US,XLY,Consumer Discretionary ETF
