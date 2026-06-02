@@ -72,9 +72,14 @@ def detect_trend(ema20_last: float, ema50_last: float) -> str:
     return "SIDEWAYS"
 
 
-def detect_support_resistance(df: pd.DataFrame, lookback: int = 20):
+def detect_support_resistance(df: pd.DataFrame, lookback: int = 40):
     recent = df.tail(lookback)
-    return float(recent["Low"].min()), float(recent["High"].max())
+
+    support = recent['Low'].rolling(5).min().iloc[-1]
+    resistance = recent['High'].rolling(5).max().iloc[-1]
+
+    return support, resistance
+
 
 
 def is_near_level(price: float, level: float, tolerance: float = 0.02) -> bool:
@@ -145,11 +150,18 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
 
     vals = get_last_values(df)
 
-    trend = detect_trend(vals["ema20_last"], vals["ema50_last"])
+    # =========================
+    # FIXED TREND LOGIC (STRONG)
+    # =========================
+    trend = "UP" if (vals["c_last"] > vals["ema20_last"] > vals["ema50_last"]) else "DOWN"
+
+    # =========================
+    # FIXED SUPPORT/RESISTANCE
+    # =========================
     support, resistance = detect_support_resistance(df)
 
-    near_support = is_near_level(vals["c_last"], support)
-    near_resistance = is_near_level(vals["c_last"], resistance)
+    near_support = is_near_level(vals["c_last"], support, tolerance=0.02)
+    near_resistance = is_near_level(vals["c_last"], resistance, tolerance=0.02)
 
     rsi_up = vals["rsi_last"] > vals["rsi_prev"]
     rsi_down = vals["rsi_last"] < vals["rsi_prev"]
@@ -158,18 +170,22 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
     bear_eng = bearish_engulfing(vals["o_prev"], vals["c_prev"], vals["o_last"], vals["c_last"])
     is_hammer = hammer(vals["o_last"], vals["h_last"], vals["l_last"], vals["c_last"])
 
-    vol_ok = volume_strong(vals["v_last"], vals["vol_avg20"])
+    vol_ok = volume_strong(vals["v_last"], vals["vol_avg20"], factor=1.1)
 
-    # LONG
+    # =========================
+    # LONG SCORE
+    # =========================
     long_score = sum([
         trend == "UP",
         near_support,
-        (25 <= vals["rsi_last"] <= 45) and rsi_up,
+        (28 <= vals["rsi_last"] <= 55) and rsi_up,
         bull_eng or is_hammer,
         vol_ok,
     ])
 
-    # SHORT
+    # =========================
+    # SHORT SCORE
+    # =========================
     short_score = sum([
         trend == "DOWN",
         near_resistance,
@@ -178,24 +194,69 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
         vol_ok,
     ])
 
-    # SIMPLE DECISION
-    if long_score >= 4 or short_score >= 4:
+    # =========================
+    # FIXED DECISION LOGIC
+    # =========================
+    if long_score >= 4:
         decision = "BUY"
+    elif short_score >= 4:
+        decision = "SHORT"
     elif (trend in ["UP", "DOWN"]) and (near_support or near_resistance):
         decision = "WAIT"
     else:
         decision = "NO ENTER"
 
-    # CONFIRMED LOGIC
+    # =========================
+    # CONFIRMED LOGIC (SAFE)
+    # =========================
     confirmed = (
-            (decision == "BUY") and
-            (trend == "UP") and
-            (long_score == 5) and
-            (32 <= vals["rsi_last"] <= 42) and
-            is_near_level(vals["c_last"], support, tolerance=0.01) and
-            (vals["v_last"] > 1.3 * vals["vol_avg20"]) and
-            (bull_eng or is_hammer)
+        (decision == "BUY") and
+        (trend == "UP") and
+        (long_score >= 3) and
+        (28 <= vals["rsi_last"] <= 55) and
+        near_support and
+        (vals["v_last"] > 1.1 * vals["vol_avg20"])
     )
+
+    confirmed_label = "CONFIRMED" if confirmed else "NOT CONFIRMED"
+
+    # =========================
+    # NEW: SIGNAL STRENGTH (0–10)
+    # =========================
+    strength = 0
+
+    # Trend strength
+    if vals["c_last"] > vals["ema20_last"] > vals["ema50_last"]:
+        strength += 2
+    elif vals["ema20_last"] > vals["ema50_last"]:
+        strength += 1
+
+    # RSI strength
+    if 35 <= vals["rsi_last"] <= 50:
+        strength += 2
+    elif 28 <= vals["rsi_last"] <= 55:
+        strength += 1
+
+    # Support strength
+    dist = abs(vals["c_last"] - support) / support
+    if dist <= 0.01:
+        strength += 2
+    elif dist <= 0.02:
+        strength += 1
+
+    # Volume strength
+    if vals["v_last"] > 1.3 * vals["vol_avg20"]:
+        strength += 2
+    elif vals["v_last"] > 1.1 * vals["vol_avg20"]:
+        strength += 1
+
+    # Candle strength
+    if bull_eng or is_hammer:
+        strength += 1
+
+    # Multi-timeframe alignment
+    if confirmed:
+        strength += 1
 
     return {
         "ticker": ticker,
@@ -209,7 +270,8 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
         "long_score": long_score,
         "short_score": short_score,
         "decision": decision,
-        "confirmed": "CONFIRMED" if confirmed else "NOT CONFIRMED",
+        "confirmed": confirmed_label,
+        "strength": strength,
     }
 
 
@@ -288,17 +350,29 @@ def main():
                         "LongScore": res["long_score"],
                         "ShortScore": res["short_score"],
                         "CONFIRMED": res["confirmed"],
+                        "Strength": res["strength"],
                     })
 
             df_res = pd.DataFrame(rows)
+
+            df_res["DecisionRank"] = df_res["Decision"].map({
+                "BUY": 0,
+                "WAIT": 1,
+                "NO ENTER": 2
+            }).fillna(3)
+
+            df_res["ConfirmedRank"] = df_res["CONFIRMED"].map({
+                "CONFIRMED": 0,
+                "NOT CONFIRMED": 1
+            }).fillna(2)
 
             # Sort: BUY first, then WAIT, then NO ENTER
             order = {"BUY": 0, "WAIT": 1, "NO ENTER": 2}
             df_res["Rank"] = df_res["Decision"].map(order).fillna(3)
             df_res = df_res.sort_values(
-                ["Rank", "LongScore", "ShortScore"],
-                ascending=[True, False, False]
-            ).drop(columns=["Rank"])
+                ["DecisionRank", "ConfirmedRank", "Strength", "LongScore"],
+                ascending=[True, True, False, False]
+            ).drop(columns=["DecisionRank", "ConfirmedRank"])
 
             # Style decision + confirmed columns
             styled = df_res.style.apply(
