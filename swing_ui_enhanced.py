@@ -288,8 +288,9 @@ def load_watchlist(path: str) -> pd.DataFrame:
         return pd.DataFrame(columns=["Yahoo Ticker", "Company Name"])
 
     df = pd.read_csv(path)
-    df["Yahoo Ticker"] = df["Yahoo Ticker"].astype(str).strip()
-    df["Company Name"] = df["Company Name"].astype(str).strip()
+    df["Yahoo Ticker"] = df["Yahoo Ticker"].astype(str).str.strip()
+    df["Company Name"] = df["Company Name"].astype(str).str.strip()
+
     return df[["Yahoo Ticker", "Company Name"]]
 
 
