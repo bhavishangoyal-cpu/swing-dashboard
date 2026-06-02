@@ -7,7 +7,8 @@ import yfinance as yf
 # CONFIG
 # =========================
 
-WATCHLIST_PATH = r"C:\Users\bhavi\PycharmProjects\PythonProject\PythonProject\PythonProject\PythonProject\NewSwingProject3.11\watchlist.csv"
+WATCHLIST_PATH = "watchlist.csv"
+
 REQUIRED_COLS = {"Open", "High", "Low", "Close", "Volume"}
 
 
@@ -280,10 +281,15 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
 # =========================
 
 def load_watchlist(path: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        st.error(f"Watchlist file not found: {path}")
+        return pd.DataFrame(columns=["Yahoo Ticker", "Company Name"])
+
     df = pd.read_csv(path)
-    df["Yahoo Ticker"] = df["Yahoo Ticker"].astype(str).str.strip()
-    df["Company Name"] = df["Company Name"].astype(str).str.strip()
+    df["Yahoo Ticker"] = df["Yahoo Ticker"].astype(str).strip()
+    df["Company Name"] = df["Company Name"].astype(str).strip()
     return df[["Yahoo Ticker", "Company Name"]]
+
 
 
 def decision_color(val: str) -> str:
