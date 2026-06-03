@@ -398,6 +398,7 @@ def main():
 if __name__ == "__main__":
     main()
 
+#STRATEGY-2
 
 import streamlit as st
 import pandas as pd
@@ -1035,6 +1036,7 @@ if st.session_state.watchlist:
 else:
     st.info("📝 Watchlist is empty. Add tickers above to begin.")
 
+#STRATEGY-2
 # ================== 52-WEEK DROP ANALYZER ==================
 
 st.divider()

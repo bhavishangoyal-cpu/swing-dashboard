@@ -1,64 +1,68 @@
-,Country,Yahoo Ticker,Company Name
-,US,AAPL,Apple Inc.
-,US,ABBV,AbbVie Inc.
-,US,ADBE,Adobe Inc.
-,US,AMZN,Amazon.com Inc.
-,US,ASML,ASML Holding
-,US,BAC,Bank of America
-,US,BLK,BlackRock Inc.
-,US,BMY,Bristol-Myers Squibb
-,US,CAT,Caterpillar Inc.
-,US,COP,ConocoPhillips
-,US,COST,Costco Wholesale
-,US,CRM,Salesforce Inc.
-,US,CRWD,CrowdStrike Holdings
-,US,CVX,Chevron Corporation
-,US,DE,Deere & Co.
-,US,DIA,Dow Jones Industrial Average ETF
-,US,EOG,EOG Resources
-,US,GE,General Electric
-,US,GOOGL,Alphabet Inc.
-,US,GS,Goldman Sachs
-,US,HD,Home Depot
-,US,HON,Honeywell International
-,US,IBM,International Business Machines
-,US,INTC,Intel Corporation
-,US,IWM,Russell 2000 ETF
-,US,JPM,JP Morgan Chase
-,US,KLAC,KLA Corporation
-,US,LMT,Lockheed Martin
-,US,LRCX,Lam Research
-,US,LLY,Eli Lilly
-,US,MCD,McDonald's Corporation
-,US,META,Meta Platforms
-,US,MRK,Merck & Co.
-,US,MS,Morgan Stanley
-,US,MSFT,Microsoft Corporation
-,US,MU,Micron Technology
-,US,NFLX,Netflix Inc.
-,US,NVDA,NVIDIA Corporation
-,US,ON,ON Semiconductor
-,US,ORCL,Oracle Corporation
-,US,PANW,Palo Alto Networks
-,US,PFE,Pfizer Inc.
-,US,QQQ,Invesco QQQ Trust
-,US,SBUX,Starbucks Corporation
-,US,SLB,Schlumberger
-,US,SMH,VanEck Semiconductor ETF
-,US,SPY,SPDR S&P 500 ETF
-,US,TSLA,Tesla Inc.
-,US,TSM,Taiwan Semiconductor
-,US,TXN,Texas Instruments
-,US,UNH,UnitedHealth Group
-,US,UPS,United Parcel Service
-,US,VRTX,Vertex Pharmaceuticals
-,US,VTI,Vanguard Total Market ETF
-,US,WFC,Wells Fargo
-,US,WMT,Walmart Inc.
-,US,XLE,Energy Select Sector ETF
-,US,XLF,Financial Select Sector ETF
-,US,XLI,Industrial Select Sector ETF
-,US,XLK,Technology Select Sector ETF
-,US,XLP,Consumer Staples ETF
-,US,XLV,Health Care Select Sector ETF
-,US,XLY,Consumer Discretionary ETF
+Ticker,Company
+AAPL,Apple Inc.
+ABBV,AbbVie Inc.
+ADBE,Adobe Inc.
+AMD,Advanced Micro Devices
+AMZN,Amazon.com Inc.
+ASML,ASML Holding
+AVGO,Broadcom Inc.
+BAC,Bank of America
+BLK,BlackRock Inc.
+BMY,Bristol-Myers Squibb
+CAT,Caterpillar Inc.
+COP,ConocoPhillips
+COST,Costco Wholesale
+CRM,Salesforce Inc.
+CRWD,CrowdStrike Holdings
+CVX,Chevron Corporation
+DE,Deere & Co.
+DIA,Dow Jones Industrial Average ETF
+DRAM,Roundhill Memory ETF
+EOG,EOG Resources
+GE,General Electric
+GOOGL,Alphabet Inc.
+GS,Goldman Sachs
+HD,Home Depot
+HON,Honeywell International
+IBM,International Business Machines
+INTC,Intel Corporation
+IWM,Russell 2000 ETF
+JPM,JP Morgan Chase
+KLAC,KLA Corporation
+KO,Coca-Cola
+LLY,Eli Lilly
+LMT,Lockheed Martin
+LRCX,Lam Research
+MCD,McDonald's Corporation
+MDLN,Medline Inc
+META,Meta Platforms
+MRK,Merck & Co.
+MS,Morgan Stanley
+MSFT,Microsoft Corporation
+MU,Micron Technology
+NFLX,Netflix Inc.
+NOW,ServiceNow
+NVDA,NVIDIA Corporation
+ON,ON Semiconductor
+ORCL,Oracle Corporation
+PANW,Palo Alto Networks
+PEP,PepsiCo
+PFE,Pfizer Inc.
+QQQ,Invesco QQQ Trust
+SMH,VanEck Semiconductor ETF
+SNOW,Snowflake Inc
+SPY,SPDR S&P 500 ETF
+TSLA,Tesla Inc.
+TSM,Taiwan Semiconductor
+TXN,Texas Instruments
+UNH,UnitedHealth Group
+UPS,United Parcel Service
+VTI,Vanguard Total Market ETF
+WMT,Walmart Inc.
+XLE,Energy Select Sector ETF
+XLF,Financial Select Sector ETF
+XLI,Industrial Select Sector ETF
+XLK,Technology Select Sector ETF
+XLP,Consumer Staples ETF
+XLV,Health Care Select Sector ETF
+XLY,Consumer Discretionary ETF
