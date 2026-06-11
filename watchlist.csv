@@ -2,67 +2,129 @@ Yahoo Ticker,Company Name
 AAPL,Apple Inc.
 ABBV,AbbVie Inc.
 ADBE,Adobe Inc.
-AMD,Advanced Micro Devices
+ADI,"Analog Devices, Inc."
+AI,"C3.ai, Inc. (AI)"
+AIQ,Global X Artificial Intelligence & Technology ETF
+AIRR,First Trust RBA American Industrial RenaissanceTM ETF
+ALAB,"Astera Labs, Inc"
+AMAT,"Applied Materials, Inc."
+AMD,"Advanced Micro Devices, Inc."
 AMZN,Amazon.com Inc.
+ARM,Arm Holdings plc (ADR)
 ASML,ASML Holding
+AVEM,Avantis Emerging Markets Equity ETF
 AVGO,Broadcom Inc.
 BAC,Bank of America
+BE,Bloom Energy Corporation
 BLK,BlackRock Inc.
 BMY,Bristol-Myers Squibb
+C,Citigroup Inc.
 CAT,Caterpillar Inc.
+CIENA,Ciena Corporation
+COHR,Coherent Corp. / II‑VI (COHR)
 COP,ConocoPhillips
 COST,Costco Wholesale
 CRM,Salesforce Inc.
-CRWD,CrowdStrike Holdings
+CRWD,"CrowdStrike Holdings, Inc."
+CRWV,"CoreWeave, Inc"
+CSTNL,iShares VII Public Limited Company - iShares Core S&P 500 UCITS ETF
 CVX,Chevron Corporation
+DAL,"Delta Air Lines, Inc."
+DDOG,"Datadog, Inc."
 DE,Deere & Co.
+DELL,Dell Technologies Inc.
 DIA,Dow Jones Industrial Average ETF
 DRAM,Roundhill Memory ETF
+EEM,iShares MSCI Emerging Markets ETF
+EMXC,iShares MSCI Emerging Markets ex China ETF
 EOG,EOG Resources
+EQT,EQT Corporation (or EQT Partners) — verify context
+EWY,iShares MSCI South Korea ETF
+FDX,FedEx Corporation
+FIX,"Comfort Systems USA, Inc. (FIX)"
+FLEX,Flex Ltd.
+FTEC,Fidelity MSCI Information Technology Index ETF
+FTNT,"Fortinet, Inc."
 GE,General Electric
+GLW,Corning Incorporated
+GOOG,Alphabet Inc. Class C
 GOOGL,Alphabet Inc.
-GS,Goldman Sachs
+GS,"Goldman Sachs Group, Inc."
 HD,Home Depot
 HON,Honeywell International
+HPE,Hewlett Packard Enterprise Co.
 IBM,International Business Machines
+IEMG,iShares Core MSCI Emerging Markets ETF
+IGM,iShares Expanded Tech‑Software Sector ETF
+IJR,iShares Core S&P Small‑Cap ETF
 INTC,Intel Corporation
-IWM,Russell 2000 ETF
+ITOT,iShares Core S&P Total U.S. Stock Market ETF
+IVV,iShares Core S&P 500 ETF
+IVW,iShares S&P 500 Growth ETF
+IWD,iShares Russell 1000 Value ETF
+IWM,iShares Russell 2000 ETF
+IYW,iShares U.S. Technology ETF
 JPM,JP Morgan Chase
+KEYS,"Keysight Technologies, Inc."
 KLAC,KLA Corporation
 KO,Coca-Cola
+LITE,Lumentum Holdings Inc.
 LLY,Eli Lilly
 LMT,Lockheed Martin
-LRCX,Lam Research
+LRCX,Lam Research Corporation
 MCD,McDonald's Corporation
 MDLN,Medline Inc
 META,Meta Platforms
+MPWR,"Monolithic Power Systems, Inc."
 MRK,Merck & Co.
+MRVL,"Marvell Technology, Inc."
 MS,Morgan Stanley
 MSFT,Microsoft Corporation
-MU,Micron Technology
+MU,"Micron Technology, Inc."
+NBIS,Nebius Group NV
 NFLX,Netflix Inc.
 NOW,ServiceNow
+NUE,Nucor Corporation
 NVDA,NVIDIA Corporation
+NXPI,NXP Semiconductors N.V.
 ON,ON Semiconductor
 ORCL,Oracle Corporation
 PANW,Palo Alto Networks
 PEP,PepsiCo
 PFE,Pfizer Inc.
+PWR,"Quanta Services, Inc."
+QLD,ProShares Ultra QQQ (2×)
 QQQ,Invesco QQQ Trust
+QQQM,Invesco NASDAQ 100 ETF (QQQM)
+RKLB,"Rocket Lab USA, Inc."
 SMH,VanEck Semiconductor ETF
+SNDK,SanDisk (SNDK) — delisted / verify
 SNOW,Snowflake Inc
+SOXL,Direxion Daily Semiconductor Bull 3X Shares
+SOXX,iShares Semiconductor ETF
 SPY,SPDR S&P 500 ETF
+SPYG,SPDR Portfolio S&P 500 Growth ETF
+SPYM,State Street SPDR Portfolio S&P 500 ETF
+STX,Seagate Technology Holdings plc
+TER,"Teradyne, Inc."
+TQQQ,ProShares UltraPro QQQ
 TSLA,Tesla Inc.
 TSM,Taiwan Semiconductor
-TXN,Texas Instruments
+TXN,Texas Instruments Incorporated
 UNH,UnitedHealth Group
 UPS,United Parcel Service
-VTI,Vanguard Total Market ETF
+VGT,Vanguard Information Technology ETF
+VLUE,iShares Edge MSCI USA Value Factor ETF
+VOO,Vanguard S&P 500 ETF
+VRT,Vertiv Holdings Co.
+VTI,Vanguard Total Stock Market ETF
+VTV,Vanguard Value ETF
+WDC,Western Digital Corporation
 WMT,Walmart Inc.
 XLE,Energy Select Sector ETF
 XLF,Financial Select Sector ETF
 XLI,Industrial Select Sector ETF
-XLK,Technology Select Sector ETF
+XLK,Technology Select Sector SPDR Fund
 XLP,Consumer Staples ETF
 XLV,Health Care Select Sector ETF
 XLY,Consumer Discretionary ETF
