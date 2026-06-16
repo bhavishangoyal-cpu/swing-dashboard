@@ -278,6 +278,7 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
         "confirmed": confirmed_label,
         "strength": strength,
         "range_pos": round(vals["day_range_pos"] * 100, 1),
+        print(f"{ticker} | range_pos: {round(vals['day_range_pos'] * 100, 1)}")
     }
 
 
