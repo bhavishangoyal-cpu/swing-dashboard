@@ -109,7 +109,7 @@ def hammer(o_last, h_last, l_last, c_last) -> bool:
     return (lower_shadow > 2 * body) and (body / rng < 0.4)
 
 
-def volume_strong(v_last: float, vol_avg20: float, factor: float = 1.2) -> bool:
+def volume_strong(v_last: float, vol_avg20: float, factor: float = 1.5) -> bool:
     if np.isnan(vol_avg20) or vol_avg20 == 0:
         return False
     return v_last > factor * vol_avg20
@@ -220,7 +220,7 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
         (long_score >= 3) and
         (28 <= vals["rsi_last"] <= 70) and
         near_support and
-        (vals["v_last"] > 1.1 * vals["vol_avg20"])
+        (vals["v_last"] > 1.5 * vals["vol_avg20"])
     )
 
     confirmed_label = "CONFIRMED" if confirmed else "NOT CONFIRMED"
@@ -364,6 +364,7 @@ def main():
                         "ShortScore": res["short_score"],
                         "CONFIRMED": res["confirmed"],
                         "Strength": res["strength"],
+                        "RangePos%": res["range_pos"],
                     })
 
             df_res = pd.DataFrame(rows)
