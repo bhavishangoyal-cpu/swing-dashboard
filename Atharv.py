@@ -1,255 +1,346 @@
-# PROGRAM 3 — REAL-TIME EXTENDED HOURS GAPUP SCANNER (POLYGON VERSION)
-# ====================================================================
+"""
+dip_buy_screener.py
 
-import streamlit as st
+Local watchlist dip-buy scanner (target 5%).
+- Reads watchlist.csv (column 'Yahoo Ticker' or first column)
+- Uses yfinance for intraday (5m) and daily data
+- Scores setups and suggests entry/stop/targets (no order execution)
+- Configure parameters below
+"""
+
+import os
+import io
+import time
+import math
+import warnings
+from datetime import datetime, timedelta
+
+import numpy as np
 import pandas as pd
 import yfinance as yf
-import requests
-import datetime
-import pytz
 
-# -----------------------------
+warnings.filterwarnings("ignore")
+
+# -----------------------
 # CONFIG
-# -----------------------------
-ET = pytz.timezone("US/Eastern")
-POLYGON_API_KEY = "pCiLssGqZHjsetUq29dUwcroJJKZriW0"   # <-- PUT YOUR NEW KEY HERE
+# -----------------------
+WATCHLIST_CSV = "watchlist.csv"   # local file (first column or 'Yahoo Ticker')
+POLL_INTERVAL_SEC = 300           # how often to refresh (seconds)
+MIN_DOLLAR_VOLUME = 50_000_000    # liquidity gate ($)
+MIN_ATR_PCT = 0.008               # 0.8% -> 0.008
+MIN_MARKETCAP = 10_000_000_000    # optional gate (10B)
+MIN_SIGNALS_SAMPLE = 30           # minimum bars for intraday indicators
+TARGET_PROFIT_PCT = 0.05          # user goal: 5% profit target (changed from 55%)
+MAX_GAP_DOWN_PCT = 0.08           # ignore >8% gap downs (panic)
+MIN_GAP_DOWN_PCT = 0.01           # consider gap down >=1%
+USE_REALTIME_LOOP = False         # set True to run continuously
 
-# -----------------------------
-# LOAD WATCHLIST
-# -----------------------------
-def load_watchlist():
-    df = pd.read_csv("watchlist.csv")
-    return df[["Yahoo Ticker", "Company Name"]]
+OUTPUT_CSV = "dip_signals.csv"
 
-watchlist = load_watchlist()
+# -----------------------
+# UTILITIES / INDICATORS
+# -----------------------
+def ema(series, span):
+    return series.ewm(span=span, adjust=False).mean()
 
-# -----------------------------
-# LAST SESSION CLOSE (REGULAR HOURS)
-# -----------------------------
-def get_last_session_close(ticker):
-    stock = yf.Ticker(ticker)
-    daily = stock.history(period="10d")
-    if daily.empty:
-        return None, None
+def rsi(series, period=14):
+    delta = series.diff()
+    up = delta.clip(lower=0)
+    down = -delta.clip(upper=0)
+    ma_up = up.ewm(alpha=1/period, adjust=False).mean()
+    ma_down = down.ewm(alpha=1/period, adjust=False).mean()
+    rs = ma_up / (ma_down + 1e-12)
+    return 100 - (100 / (1 + rs))
 
-    last_close = daily["Close"].iloc[-1]
-    last_date = daily.index[-1]
+def macd_hist(series, fast=12, slow=26, signal=9):
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd = ema_fast - ema_slow
+    macd_signal = macd.ewm(span=signal, adjust=False).mean()
+    return macd - macd_signal
 
-    last_close_dt = datetime.datetime(
-        year=last_date.year,
-        month=last_date.month,
-        day=last_date.day,
-        hour=16,
-        minute=0,
-        second=0,
-        tzinfo=ET
-    )
-    return last_close, last_close_dt
+def true_range(df):
+    high = df['High']
+    low = df['Low']
+    prev = df['Close'].shift(1)
+    tr = pd.concat([high - low, (high - prev).abs(), (low - prev).abs()], axis=1).max(axis=1)
+    return tr
 
-# -----------------------------
-# POLYGON EXTENDED-HOURS DATA
-# -----------------------------
-def get_polygon_extended_hours(ticker):
+def atr(df, period=14):
+    tr = true_range(df)
+    return tr.ewm(alpha=1/period, adjust=False).mean()
+
+def vwap(df):
+    tp = (df['High'] + df['Low'] + df['Close']) / 3
+    cum_vol = df['Volume'].cumsum()
+    cum_vp = (tp * df['Volume']).cumsum()
+    return cum_vp / cum_vol
+
+def beta_vs_market(daily_df, market_symbol="SPY"):
     try:
-        now = datetime.datetime.now(ET)
-
-        # Determine last session close (4 PM ET)
-        last_close_dt = now.replace(hour=16, minute=0, second=0, microsecond=0)
-        if now.hour < 16:
-            last_close_dt = last_close_dt - datetime.timedelta(days=1)
-
-        start = last_close_dt.isoformat()
-        end = now.isoformat()
-
-        url = (
-            f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/minute/"
-            f"{start}/{end}?adjusted=true&sort=asc&limit=50000&apiKey={POLYGON_API_KEY}"
-        )
-
-        data = requests.get(url).json()
-
-        if "results" not in data:
-            return None, None
-
-        candles = data["results"]
-
-        # REAL extended-hours price
-        last_price = candles[-1]["c"]
-
-        # REAL extended-hours volume
-        ext_vol = sum(c["v"] for c in candles)
-
-        return last_price, ext_vol
-
+        m = yf.download(market_symbol, period="120d", progress=False)['Close']
+        s = daily_df['Close'].dropna()
+        common_index = s.index.intersection(m.index)
+        if len(common_index) < 30:
+            return np.nan
+        r_stock = s.loc[common_index].pct_change().dropna()
+        r_mkt = m.loc[common_index].pct_change().dropna()
+        cov = np.cov(r_stock, r_mkt)
+        beta = cov[0,1] / (cov[1,1] + 1e-12)
+        return float(beta)
     except Exception:
-        return None, None
+        return np.nan
 
-def debug_polygon(ticker):
-    now = datetime.datetime.now(ET)
+# -----------------------
+# DATA FETCHING
+# -----------------------
+def load_watchlist(path=WATCHLIST_CSV):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"{path} not found")
+    df = pd.read_csv(path, dtype=str)
+    df.columns = [c.strip() for c in df.columns]
+    if 'Yahoo Ticker' in df.columns:
+        tickers = df['Yahoo Ticker'].astype(str).str.strip().str.upper().dropna().tolist()
+    else:
+        tickers = df.iloc[:,0].astype(str).str.strip().str.upper().dropna().tolist()
+    return tickers
 
-    last_close_dt = now.replace(hour=16, minute=0, second=0, microsecond=0)
-    if now.hour < 16:
-        last_close_dt = last_close_dt - datetime.timedelta(days=1)
-
-    start = last_close_dt.isoformat()
-    end = now.isoformat()
-
-    url = (
-        f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/minute/"
-        f"{start}/{end}?adjusted=true&sort=asc&limit=50000&apiKey={POLYGON_API_KEY}"
-    )
-
-    st.write("URL:", url)
-    st.write("Start:", start)
-    st.write("End:", end)
-
-    data = requests.get(url).json()
-    st.write("Raw Polygon Response:", data)
-
-
-# -----------------------------
-# GAP% + VOLUME RATIO (POLYGON)
-# -----------------------------
-def get_extended_gap_and_volume_polygon(ticker):
-    last_close, last_close_dt = get_last_session_close(ticker)
-    if last_close is None:
-        return None, None
-
-    last_price, ext_vol = get_polygon_extended_hours(ticker)
-    if last_price is None:
-        return None, None
-
-    # GAP %
-    gap_pct = ((last_price - last_close) / last_close) * 100
-
-    # Average daily volume
-    stock = yf.Ticker(ticker)
-    hist_vol = stock.history(period="6mo")
-    avg_vol = hist_vol["Volume"].mean()
-
-    vol_ratio = ext_vol / avg_vol if avg_vol > 0 else None
-
-    return gap_pct, vol_ratio
-
-# -----------------------------
-# NEWS CATALYST
-# -----------------------------
-def get_news_catalyst(ticker):
+def fetch_intraday_5m(ticker, days=7):
     try:
-        news = yf.Ticker(ticker).news
-        if not news:
+        df = yf.download(ticker, period=f"{days}d", interval="5m", progress=False, threads=False)
+        if df is None or df.empty:
             return None
-
-        for item in news[:5]:
-            title = item.get("title", "").lower()
-
-            if any(k in title for k in ["earnings", "beat", "guidance"]):
-                return "Earnings / Guidance"
-            if any(k in title for k in ["fda", "approval"]):
-                return "FDA / Approval"
-            if any(k in title for k in ["acquire", "acquisition", "merger"]):
-                return "Acquisition / Merger"
-            if "upgrade" in title:
-                return "Analyst Upgrade"
-            if "contract" in title:
-                return "New Contract"
-            if any(k in title for k in ["launch", "product"]):
-                return "Product Launch"
-
-        return None
+        return df.dropna()
     except Exception:
         return None
 
-# -----------------------------
-# SCORING ENGINE
-# -----------------------------
-def compute_score(gap_pct, vol_ratio, news):
+def fetch_daily(ticker, days=365):
+    try:
+        df = yf.download(ticker, period=f"{days}d", interval="1d", progress=False, threads=False)
+        if df is None or df.empty:
+            return None
+        return df.dropna()
+    except Exception:
+        return None
+
+# -----------------------
+# FILTERS & SCORING
+# -----------------------
+def liquidity_and_volatility_gate(daily_df):
+    try:
+        avg_dollar_vol = (daily_df['Close'] * daily_df['Volume']).tail(20).mean()
+        atr14 = atr(daily_df, period=14).iloc[-1]
+        atr_pct = atr14 / daily_df['Close'].iloc[-1] if atr14 is not None else 0
+        return avg_dollar_vol, atr_pct
+    except Exception:
+        return 0, 0
+
+def score_dip_setup(ticker, intraday_df, daily_df, qqq_intraday=None):
+    reasons = []
     score = 0
 
-    # Gap % (25%)
-    if gap_pct is not None:
-        if gap_pct >= 8:
-            score += 25
-        elif gap_pct >= 5:
-            score += 18
-        elif gap_pct >= 3:
-            score += 12
-        elif gap_pct >= 1:
-            score += 6
+    avg_dollar_vol, atr_pct = liquidity_and_volatility_gate(daily_df)
+    if avg_dollar_vol < MIN_DOLLAR_VOLUME:
+        reasons.append(f"low dollar vol ${avg_dollar_vol:,.0f}")
+        return _result(ticker, 0, "AVOID", None, None, None, None, reasons, avg_dollar_vol, atr_pct)
 
-    # Volume ratio (15%)
-    if vol_ratio is not None:
-        if vol_ratio >= 10:
-            score += 15
-        elif vol_ratio >= 5:
-            score += 11
-        elif vol_ratio >= 2:
-            score += 7
-        elif vol_ratio >= 1:
-            score += 4
+    if atr_pct < MIN_ATR_PCT:
+        reasons.append(f"low ATR% {atr_pct:.4f}")
+        return _result(ticker, 0, "AVOID", None, None, None, None, reasons, avg_dollar_vol, atr_pct)
 
-    # News (60%)
-    if news:
-        n = news.lower()
-        if "earnings" in n or "guidance" in n or "beat" in n:
-            score += 60
-        elif "fda" in n or "approval" in n:
-            score += 60
-        elif "acquisition" in n or "merger" in n:
-            score += 55
-        elif "upgrade" in n:
-            score += 45
-        elif "contract" in n:
-            score += 40
-        elif "launch" in n or "product" in n:
-            score += 35
+    if intraday_df is None or len(intraday_df) < MIN_SIGNALS_SAMPLE:
+        reasons.append("no intraday data")
+        return _result(ticker, 0, "AVOID", None, None, None, None, reasons, avg_dollar_vol, atr_pct)
 
-    return min(score, 100)
+    df = intraday_df.copy()
+    price = df['Close'].iloc[-1]
 
-# -----------------------------
-# SIGNAL LABEL
-# -----------------------------
-def signal_label(score, news):
-    if score >= 75 and news:
-        return "BUY"
-    elif score >= 50:
-        return "WATCH"
+    df['EMA20'] = ema(df['Close'], span=20)
+    df['EMA50'] = ema(df['Close'], span=50)
+    df['RSI14'] = rsi(df['Close'], period=14)
+    df['MACD_H'] = macd_hist(df['Close'])
+    df['VWAP'] = vwap(df)
+
+    avg_5min_vol = df['Volume'].tail(60).mean() if len(df) >= 60 else df['Volume'].mean()
+    recent_breakout_vol = df['Volume'].iloc[-5:].max()
+    dip_volume = df['Volume'].iloc[-20:-1].mean() if len(df) > 20 else df['Volume'].mean()
+
+    try:
+        today = df.index.normalize()[-1]
+        day_df = df[df.index.normalize() == today]
+        first_bar = day_df.iloc[0]
+        prev_close = df['Close'].shift(1).loc[first_bar.name]
+        gap_pct = (first_bar['Open'] - prev_close) / prev_close if prev_close and not math.isnan(prev_close) else 0.0
+    except Exception:
+        gap_pct = 0.0
+
+    near_ema20 = abs(price - df['EMA20'].iloc[-1]) / price <= 0.008
+    reclaim_vwap = price > df['VWAP'].iloc[-1]
+    rsi_val = df['RSI14'].iloc[-1]
+    macd_up = df['MACD_H'].iloc[-1] > df['MACD_H'].iloc[-2] if len(df) >= 2 else False
+    rs_vs_qqq = None
+    if qqq_intraday is not None and not qqq_intraday.empty:
+        try:
+            stock_ret = price / df['Close'].iloc[-6] - 1
+            qqq_ret = qqq_intraday['Close'].iloc[-1] / qqq_intraday['Close'].iloc[-6] - 1
+            rs_vs_qqq = stock_ret - qqq_ret
+        except Exception:
+            rs_vs_qqq = None
+
+    # Price context (20)
+    if near_ema20:
+        score += 10; reasons.append("near 5m EMA20")
+    if price > ema(daily_df['Close'], span=50).iloc[-1]:
+        score += 10; reasons.append("above daily 50EMA")
+
+    # Momentum (25)
+    if 30 <= rsi_val <= 40:
+        score += 10; reasons.append(f"RSI {rsi_val:.1f} in 30-40")
+    elif 40 < rsi_val <= 50:
+        score += 5; reasons.append(f"RSI {rsi_val:.1f} in 40-50")
+    if macd_up:
+        score += 10; reasons.append("MACD hist rising")
+    if reclaim_vwap:
+        score += 5; reasons.append("above VWAP")
+
+    # Volume (20)
+    if recent_breakout_vol >= 1.5 * avg_5min_vol:
+        score += 10; reasons.append("recent breakout vol >=1.5x avg")
+    if dip_volume < recent_breakout_vol:
+        score += 10; reasons.append("dip volume lower than breakout vol")
+
+    # Relative strength (15)
+    if rs_vs_qqq is not None and rs_vs_qqq > 0:
+        score += 15; reasons.append("outperforming QQQ recently")
+    elif rs_vs_qqq is None:
+        if price > df['Close'].iloc[-30] if len(df) > 30 else False:
+            score += 7; reasons.append("intraday uptrend (partial RS)")
+
+    # News placeholder (10)
+    score += 10; reasons.append("news assumed neutral (no API)")
+
+    # Gap down check
+    if gap_pct <= -MIN_GAP_DOWN_PCT and gap_pct >= -MAX_GAP_DOWN_PCT:
+        score += 5; reasons.append(f"gap down {gap_pct*100:.1f}% (candidate)")
+    elif gap_pct < -MAX_GAP_DOWN_PCT:
+        reasons.append(f"large gap down {gap_pct*100:.1f}% (skip)"); return _result(ticker, 0, "AVOID", None, None, None, None, reasons, avg_dollar_vol, atr_pct)
+
+    beta = beta_vs_market(daily_df)
+    if not math.isnan(beta) and beta >= 1.5 and beta <= 3.0:
+        score += 5; reasons.append(f"beta {beta:.2f} in sweet spot")
+
+    score = min(100, int(round(score)))
+    if score >= 75:
+        signal = "STRONG"
+    elif score >= 55:
+        signal = "CONSIDER"
+    elif score >= 35:
+        signal = "WATCH"
     else:
-        return "IGNORE"
+        signal = "AVOID"
 
-# -----------------------------
-# STREAMLIT UI
-# -----------------------------
-st.title("Program 3 — Real-Time Extended-Hours GAPUP Scanner (Polygon Version)")
+    entry = float(df['EMA20'].iloc[-1]) if near_ema20 else float(price)
+    atr5 = atr(df, period=14).iloc[-1] if 'ATR' not in df.columns else df['ATR'].iloc[-1]
+    if math.isnan(atr5) or atr5 == 0:
+        atr5 = (df['High'] - df['Low']).tail(10).mean()
+    recent_swing_low = df['Low'].tail(20).min()
+    stop = float(max(recent_swing_low - 0.002 * price, entry - 2 * atr5))
+    target1 = round(entry * (1 + 0.03), 6)   # quick 3% partial
+    target2 = round(entry * (1 + TARGET_PROFIT_PCT), 6)  # main target (5%)
+    return _result(ticker, score, signal, entry, stop, target1, target2, reasons, avg_dollar_vol, atr_pct, beta=beta)
 
-rows = []
+def _result(ticker, score, signal, entry, stop, t1, t2, reasons, avg_dollar_vol, atr_pct, beta=None):
+    return {
+        "ticker": ticker,
+        "score": score,
+        "signal": signal,
+        "entry": entry,
+        "stop": stop,
+        "target1": t1,
+        "target2": t2,
+        "reasons": reasons,
+        "avg_dollar_vol": avg_dollar_vol,
+        "atr_pct": atr_pct,
+        "beta": beta
+    }
 
-for _, row in watchlist.iterrows():
-    ticker = row["Yahoo Ticker"]
-    name = row["Company Name"]
+# -----------------------
+# MAIN SCAN LOOP
+# -----------------------
+def run_scan_once():
+    tickers = load_watchlist(WATCHLIST_CSV)
+    qqq = fetch_intraday_5m("QQQ", days=7)
+    results = []
+    errors = []
 
-    gap_pct, vol_ratio = get_extended_gap_and_volume_polygon(ticker)
-    news = get_news_catalyst(ticker)
+    for t in tickers:
+        try:
+            intraday = fetch_intraday_5m(t, days=7)
+            daily = fetch_daily(t, days=365)
+            if daily is None or daily.empty:
+                print(f"{t}: no daily data, skipping")
+                # still append a consistent result so DataFrame columns exist
+                results.append(_result(t, 0, "AVOID", None, None, None, None, ["no daily data"], 0, 0, beta=None))
+                continue
 
-    if gap_pct is None:
-        continue
+            res = score_dip_setup(t, intraday, daily, qqq_intraday=qqq)
+            # ensure res is a dict and contains expected keys
+            if not isinstance(res, dict):
+                raise ValueError(f"score_dip_setup returned non-dict for {t}")
+            # normalize missing keys by re-creating via _result if needed
+            expected_keys = {"ticker","score","signal","entry","stop","target1","target2","reasons","avg_dollar_vol","atr_pct","beta"}
+            if not expected_keys.issubset(set(res.keys())):
+                # fill missing keys with safe defaults
+                safe = {k: res.get(k, None) for k in expected_keys}
+                res = safe
+            results.append(res)
 
-    score = compute_score(gap_pct, vol_ratio, news)
-    signal = signal_label(score, news)
+            # print summary for strong signals
+            if res.get('signal') in ("STRONG", "CONSIDER"):
+                print(f"[{res.get('signal')}] {res.get('ticker')} score={res.get('score')} entry={res.get('entry')} stop={res.get('stop')} target={res.get('target2')}")
+                for r in res.get('reasons', []):
+                    print("   -", r)
 
-    rows.append({
-        "Ticker": ticker,
-        "Name": name,
-        "Gap %": round(gap_pct, 2),
-        "Vol Ratio": round(vol_ratio, 3) if vol_ratio else None,
-        "News": news if news else "None",
-        "Score": score,
-        "Signal": signal
-    })
+        except Exception as e:
+            # log error and append a safe AVOID row so DataFrame columns remain consistent
+            err_msg = f"Error scanning {t}: {e}"
+            print(err_msg)
+            errors.append(err_msg)
+            results.append(_result(t, 0, "AVOID", None, None, None, None, [str(e)], 0, 0, beta=None))
 
-if rows:
-    df = pd.DataFrame(rows)
-    df = df.sort_values(by="Score", ascending=False)
-    st.dataframe(df)
-else:
-    st.write("No extended-hours data available right now.")
+    # Build DataFrame safely
+    if not results:
+        # no results at all: create empty DataFrame with expected columns
+        cols = ["ticker","score","signal","entry","stop","target1","target2","reasons","avg_dollar_vol","atr_pct","beta"]
+        df_out = pd.DataFrame(columns=cols)
+    else:
+        df_out = pd.DataFrame(results)
+
+    # Ensure 'score' column exists and is numeric
+    if 'score' not in df_out.columns:
+        df_out['score'] = 0
+    df_out['score'] = pd.to_numeric(df_out['score'], errors='coerce').fillna(0).astype(int)
+
+    # Sort safely
+    try:
+        df_out = df_out.sort_values(by="score", ascending=False).reset_index(drop=True)
+    except Exception as e:
+        print("Warning: could not sort by score:", e)
+
+    # Save CSV
+    try:
+        df_out.to_csv(OUTPUT_CSV, index=False)
+        print(f"Scan complete. Results saved to {OUTPUT_CSV}")
+    except Exception as e:
+        print("Warning: failed to save CSV:", e)
+
+    # Optionally print top candidates
+    top = df_out[df_out['signal'].isin(['STRONG','CONSIDER'])].head(20)
+    if not top.empty:
+        print("\nTop candidates:")
+        print(top[['ticker','score','signal','entry','stop','target2','avg_dollar_vol','atr_pct','beta']].to_string(index=False))
+    else:
+        print("No strong/consider signals right now.")
+
+    # return DataFrame for further use
+    return df_out

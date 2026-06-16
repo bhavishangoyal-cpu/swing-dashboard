@@ -1,0 +1,130 @@
+Ticker,Company Name,Decision,Trend,Close,Support,Resistance,RSI,LongScore,ShortScore,CONFIRMED,Strength,Enhanced Signal,Enhanced Reason,Volume Ratio,ATR %,VIX Level,Entry Price
+BLK,BlackRock Inc.,BUY,UP,1010.79,1008.42,1013.88,52.5,4,2,CONFIRMED,8,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.68,2.42,22.2,-
+KO,Coca-Cola,BUY,DOWN,83.58,83.42,83.78,49.7,4,3,NOT CONFIRMED,8,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.27,2.02,22.2,-
+GOOGL,Alphabet Inc.,BUY,DOWN,356.29,355.23,357.25,49.9,4,3,NOT CONFIRMED,7,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.99,2.84,22.2,-
+STX,Seagate Technology Holdings plc,BUY,DOWN,815.81,812.41,823.0,53.3,4,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.99,6.53,22.2,-
+UNH,UnitedHealth Group,BUY,DOWN,407.56,405.0,408.02,51.1,4,3,NOT CONFIRMED,6,POTENTIAL BUY (Breakout),Breakout above 5-day high | VIX: 22.2 (Worried),0.9,2.45,22.2,-
+HPE,Hewlett Packard Enterprise Co.,BUY,DOWN,45.5,45.03,45.57,54.0,4,3,NOT CONFIRMED,5,POTENTIAL BUY (Breakout),Breakout above 5-day high | VIX: 22.2 (Worried),0.83,9.29,22.2,-
+GLW,Corning Incorporated,WAIT,DOWN,168.28,167.73,168.9,47.0,3,3,NOT CONFIRMED,7,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.79,8.53,22.2,-
+INTC,Intel Corporation,WAIT,UP,107.01,106.69,107.92,52.3,3,2,NOT CONFIRMED,7,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.97,8.33,22.2,-
+COP,ConocoPhillips,WAIT,DOWN,119.92,119.73,120.65,35.5,2,3,NOT CONFIRMED,7,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.35,2.54,22.2,-
+EOG,EOG Resources,WAIT,DOWN,140.31,140.23,141.48,41.3,2,3,NOT CONFIRMED,7,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.03,2.73,22.2,-
+LITE,Lumentum Holdings Inc.,WAIT,DOWN,853.44,850.86,870.44,37.4,2,3,NOT CONFIRMED,7,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.95,10.62,22.2,-
+ADBE,Adobe Inc.,WAIT,DOWN,233.32,233.01,234.26,39.1,3,3,NOT CONFIRMED,6,MODERATE BUY,Weak setup - missing confirmations | VIX: 22.2 (Worried),0.91,4.52,22.2,-
+ARM,Arm Holdings plc (ADR),WAIT,DOWN,307.35,306.56,309.83,48.8,3,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.63,12.88,22.2,-
+AVGO,Broadcom Inc.,WAIT,DOWN,371.56,371.56,374.47,35.2,3,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.24,6.86,22.2,-
+FDX,FedEx Corporation,WAIT,DOWN,319.24,318.96,320.98,43.5,3,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.62,2.91,22.2,-
+FTNT,"Fortinet, Inc.",WAIT,DOWN,138.77,138.39,139.18,35.9,3,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.97,4.44,22.2,-
+GOOG,Alphabet Inc. Class C,WAIT,DOWN,353.32,352.81,354.87,39.1,3,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.86,2.87,22.2,-
+LLY,Eli Lilly,WAIT,DOWN,1136.59,1136.0,1140.82,43.7,3,3,NOT CONFIRMED,6,POTENTIAL BUY (Breakout),Breakout above 5-day high | VIX: 22.2 (Worried),0.83,3.43,22.2,-
+MRK,Merck & Co.,WAIT,UP,119.06,118.68,119.17,79.2,3,2,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.01,2.95,22.2,-
+ON,ON Semiconductor,WAIT,DOWN,110.05,109.57,111.21,52.4,3,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.07,8.08,22.2,-
+PEP,PepsiCo,WAIT,UP,144.28,143.82,144.57,62.3,3,2,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.34,2.15,22.2,-
+TSM,Taiwan Semiconductor,WAIT,DOWN,408.76,407.94,411.58,39.9,3,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.95,4.54,22.2,-
+WDC,Western Digital Corporation,WAIT,DOWN,490.35,488.04,494.37,43.0,3,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.91,7.15,22.2,-
+WMT,Walmart Inc.,WAIT,UP,120.56,120.12,120.82,74.3,3,2,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.85,2.78,22.2,-
+XLY,Consumer Discretionary ETF,WAIT,DOWN,113.48,113.38,113.74,36.1,3,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.96,1.81,22.2,-
+ABBV,AbbVie Inc.,WAIT,DOWN,225.02,224.89,226.5,41.7,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Breakout),Breakout above 5-day high | VIX: 22.2 (Worried),0.77,2.5,22.2,-
+ADI,"Analog Devices, Inc.",WAIT,DOWN,392.47,392.44,395.41,38.5,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.75,5.07,22.2,-
+AMAT,"Applied Materials, Inc.",WAIT,DOWN,497.02,496.32,501.51,46.2,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.3,5.8,22.2,-
+AMD,"Advanced Micro Devices, Inc.",WAIT,DOWN,451.67,450.36,455.9,46.0,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.87,7.44,22.2,-
+AMZN,Amazon.com Inc.,WAIT,DOWN,237.95,237.45,238.58,39.3,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.94,3.11,22.2,-
+BAC,Bank of America,WAIT,DOWN,54.53,54.52,54.83,35.6,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Breakout),Breakout above 5-day high | VIX: 22.2 (Worried),0.76,2.01,22.2,-
+C,Citigroup Inc.,WAIT,DOWN,133.39,133.33,134.06,44.6,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.44,2.63,22.2,-
+CAT,Caterpillar Inc.,WAIT,DOWN,856.26,855.91,859.95,47.0,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.31,3.99,22.2,-
+COHR,Coherent Corp. / II‑VI (COHR),WAIT,DOWN,354.77,353.19,359.8,36.7,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.95,10.26,22.2,-
+CRM,Salesforce Inc.,WAIT,DOWN,170.99,170.96,171.99,39.2,2,3,NOT CONFIRMED,6,MODERATE BUY,Weak setup - missing confirmations | VIX: 22.2 (Worried),0.68,5.89,22.2,-
+CRWD,"CrowdStrike Holdings, Inc.",WAIT,DOWN,647.37,645.42,649.13,41.2,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.65,6.15,22.2,-
+DAL,"Delta Air Lines, Inc.",WAIT,DOWN,76.5,76.44,77.3,36.6,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.94,3.45,22.2,-
+DRAM,Roundhill Memory ETF,WAIT,DOWN,57.36,57.36,57.94,39.4,2,3,NOT CONFIRMED,6,HOLD,Insufficient data,0,0,N/A,-
+FTEC,Fidelity MSCI Information Technology Index ETF,WAIT,DOWN,268.42,268.33,269.75,36.6,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.15,3.03,22.2,-
+IGM,iShares Expanded Tech‑Software Sector ETF,WAIT,DOWN,153.04,152.99,153.78,38.7,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.3,3.02,22.2,-
+IJR,iShares Core S&P Small‑Cap ETF,WAIT,DOWN,138.91,138.84,139.26,35.6,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.29,1.52,22.2,-
+IWM,iShares Russell 2000 ETF,WAIT,DOWN,282.01,281.96,283.05,38.1,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.39,2.11,22.2,-
+KEYS,"Keysight Technologies, Inc.",WAIT,DOWN,324.02,323.19,324.98,45.1,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.51,4.36,22.2,-
+KLAC,KLA Corporation,WAIT,DOWN,2137.08,2131.64,2150.91,44.0,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.5,5.95,22.2,-
+META,Meta Platforms,WAIT,DOWN,570.79,570.7,573.68,37.4,2,3,NOT CONFIRMED,6,MODERATE BUY,Weak setup - missing confirmations | VIX: 22.2 (Worried),0.96,3.49,22.2,-
+MPWR,"Monolithic Power Systems, Inc.",WAIT,DOWN,1472.97,1470.01,1494.22,43.2,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.01,6.93,22.2,-
+MRVL,"Marvell Technology, Inc.",WAIT,DOWN,252.85,252.29,257.64,37.8,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.99,12.31,22.2,-
+MU,"Micron Technology, Inc.",WAIT,DOWN,891.57,891.33,907.8,47.8,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.98,9.1,22.2,-
+NFLX,Netflix Inc.,WAIT,DOWN,81.95,81.89,82.19,47.1,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.03,2.29,22.2,-
+PFE,Pfizer Inc.,WAIT,DOWN,25.61,25.6,25.7,45.3,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.91,1.74,22.2,-
+QLD,ProShares Ultra QQQ (2×),WAIT,DOWN,86.53,86.5,87.34,38.3,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.35,4.38,22.2,-
+QQQ,Invesco QQQ Trust,WAIT,DOWN,693.71,693.71,697.0,38.5,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.32,2.1,22.2,-
+SMH,VanEck Semiconductor ETF,WAIT,DOWN,570.56,570.56,575.28,43.2,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.14,4.95,22.2,-
+SNDK,SanDisk (SNDK) — delisted / verify,WAIT,DOWN,1641.67,1631.8,1657.92,43.1,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.91,8.69,22.2,-
+SOXL,Direxion Daily Semiconductor Bull 3X Shares,WAIT,DOWN,180.02,179.62,185.5,45.1,2,2,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.44,20.68,22.2,-
+SOXX,iShares Semiconductor ETF,WAIT,DOWN,541.81,541.59,547.01,44.5,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.55,5.98,22.2,-
+TER,"Teradyne, Inc.",WAIT,DOWN,347.7,346.5,351.12,48.9,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.04,8.11,22.2,-
+TXN,Texas Instruments Incorporated,WAIT,DOWN,281.95,281.86,283.89,46.2,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.89,5.12,22.2,-
+VGT,Vanguard Information Technology ETF,WAIT,DOWN,112.33,112.33,112.97,36.7,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.95,3.07,22.2,-
+VLUE,iShares Edge MSCI USA Value Factor ETF,WAIT,DOWN,190.47,190.47,191.67,38.4,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.18,2.53,22.2,-
+XLK,Technology Select Sector SPDR Fund,WAIT,DOWN,176.5,176.44,177.5,38.6,2,3,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.29,3.37,22.2,-
+XLV,Health Care Select Sector ETF,WAIT,DOWN,152.87,152.82,153.2,40.0,2,3,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.05,1.59,22.2,-
+FLEX,Flex Ltd.,WAIT,DOWN,139.48,138.49,139.7,52.0,3,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.76,6.74,22.2,-
+ORCL,Oracle Corporation,WAIT,DOWN,203.47,200.16,203.5,48.0,3,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.75,7.12,22.2,-
+RKLB,"Rocket Lab USA, Inc.",WAIT,DOWN,105.04,104.66,105.48,32.5,3,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.49,11.32,22.2,-
+SNOW,Snowflake Inc,WAIT,DOWN,239.88,239.51,241.62,34.1,3,3,NOT CONFIRMED,5,POTENTIAL BUY (Breakout),Breakout above 5-day high | VIX: 22.2 (Worried),0.54,7.7,22.2,-
+AAPL,Apple Inc.,WAIT,DOWN,291.5,291.39,292.94,27.5,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.97,2.52,22.2,-
+ALAB,"Astera Labs, Inc",WAIT,DOWN,330.52,329.4,338.26,31.1,2,2,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.92,9.58,22.2,-
+BE,Bloom Energy Corporation,WAIT,DOWN,234.25,233.6,236.01,51.2,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.46,10.73,22.2,-
+BMY,Bristol-Myers Squibb,WAIT,DOWN,55.61,55.6,55.98,31.5,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.7,2.68,22.2,-
+CRWV,"CoreWeave, Inc",WAIT,DOWN,95.58,95.55,96.59,33.9,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.6,9.1,22.2,-
+DDOG,"Datadog, Inc.",WAIT,DOWN,227.59,227.28,229.54,31.7,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.57,6.55,22.2,-
+EEM,iShares MSCI Emerging Markets ETF,WAIT,DOWN,64.66,64.64,64.89,29.6,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.19,2.76,22.2,-
+EMXC,iShares MSCI Emerging Markets ex China ETF,WAIT,DOWN,94.13,94.1,94.58,29.6,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.99,3.2,22.2,-
+EQT,EQT Corporation (or EQT Partners) — verify context,WAIT,DOWN,52.62,52.59,52.97,35.0,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.79,2.17,22.2,-
+GS,"Goldman Sachs Group, Inc.",WAIT,DOWN,1000.61,1000.04,1007.74,32.8,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.0,3.51,22.2,-
+IBM,International Business Machines,WAIT,DOWN,272.65,272.45,274.0,34.3,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.42,6.56,22.2,-
+IEMG,iShares Core MSCI Emerging Markets ETF,WAIT,DOWN,78.63,78.6,78.92,29.4,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.07,2.68,22.2,-
+ITOT,iShares Core S&P Total U.S. Stock Market ETF,WAIT,DOWN,158.97,158.94,159.48,31.0,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),2.18,1.26,22.2,-
+IVV,iShares Core S&P 500 ETF,WAIT,DOWN,728.85,728.74,731.3,30.8,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.81,1.2,22.2,-
+IVW,iShares S&P 500 Growth ETF,WAIT,DOWN,131.52,131.52,132.09,32.0,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.22,1.81,22.2,-
+LRCX,Lam Research Corporation,WAIT,DOWN,321.52,321.32,324.12,50.3,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.4,6.14,22.2,-
+MDLN,Medline Inc,WAIT,DOWN,36.53,36.51,36.84,28.2,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.66,4.65,22.2,-
+MS,Morgan Stanley,WAIT,DOWN,206.69,206.59,207.62,29.0,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.9,2.68,22.2,-
+NOW,ServiceNow,WAIT,DOWN,106.09,106.09,106.79,29.7,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.56,8.03,22.2,-
+NUE,Nucor Corporation,WAIT,DOWN,250.46,249.72,250.98,50.9,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Breakout),Breakout above 5-day high | VIX: 22.2 (Worried),0.86,3.02,22.2,-
+NXPI,NXP Semiconductors N.V.,WAIT,DOWN,285.57,284.71,287.24,50.5,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.1,5.7,22.2,-
+SPY,SPDR S&P 500 ETF,WAIT,DOWN,725.43,725.33,727.89,30.2,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.12,1.2,22.2,-
+SPYG,SPDR Portfolio S&P 500 Growth ETF,WAIT,DOWN,113.89,113.89,114.36,33.7,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.27,1.82,22.2,-
+SPYM,State Street SPDR Portfolio S&P 500 ETF,WAIT,DOWN,85.39,85.38,85.67,29.3,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),2.71,1.2,22.2,-
+VOO,Vanguard S&P 500 ETF,WAIT,DOWN,666.97,666.93,669.2,30.6,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.71,1.2,22.2,-
+VTI,Vanguard Total Stock Market ETF,WAIT,DOWN,358.06,357.9,359.12,30.7,2,3,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.93,1.26,22.2,-
+XLI,Industrial Select Sector ETF,WAIT,DOWN,169.63,169.52,170.15,32.5,2,3,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.71,1.65,22.2,-
+AVEM,Avantis Emerging Markets Equity ETF,WAIT,DOWN,91.06,91.06,91.44,28.3,2,3,NOT CONFIRMED,4,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.93,2.72,22.2,-
+CVX,Chevron Corporation,WAIT,DOWN,189.83,189.72,191.42,21.8,2,3,NOT CONFIRMED,4,MODERATE BUY,Weak setup - missing confirmations | VIX: 22.2 (Worried),0.81,2.13,22.2,-
+DE,Deere & Co.,WAIT,DOWN,560.04,559.94,566.8,6.0,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.71,3.43,22.2,-
+DELL,Dell Technologies Inc.,WAIT,DOWN,369.87,369.67,375.21,22.5,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Breakout),Breakout above 5-day high | VIX: 22.2 (Worried),0.69,9.71,22.2,-
+DIA,Dow Jones Industrial Average ETF,WAIT,DOWN,500.26,500.1,501.79,21.5,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.97,1.25,22.2,-
+EWY,iShares MSCI South Korea ETF,WAIT,DOWN,178.73,178.2,180.24,25.0,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.96,6.73,22.2,-
+GE,General Electric,WAIT,DOWN,318.79,318.33,320.97,16.9,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.65,3.13,22.2,-
+HD,Home Depot,WAIT,DOWN,318.95,318.93,320.16,27.8,2,3,NOT CONFIRMED,4,MODERATE BUY,Weak setup - missing confirmations | VIX: 22.2 (Worried),0.89,2.37,22.2,-
+HON,Honeywell International,WAIT,DOWN,205.78,205.52,206.73,16.8,2,3,NOT CONFIRMED,4,MODERATE BUY,Weak setup - missing confirmations | VIX: 22.2 (Worried),0.92,3.56,22.2,-
+IWD,iShares Russell 1000 Value ETF,WAIT,DOWN,235.29,235.26,235.96,27.1,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.07,1.12,22.2,-
+JPM,JP Morgan Chase,WAIT,DOWN,309.21,309.04,311.27,15.8,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.84,1.99,22.2,-
+LMT,Lockheed Martin,WAIT,DOWN,525.13,524.81,526.44,20.0,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.68,1.99,22.2,-
+MCD,McDonald's Corporation,WAIT,DOWN,282.47,282.45,283.72,25.0,2,3,NOT CONFIRMED,4,MODERATE BUY,Weak setup - missing confirmations | VIX: 22.2 (Worried),0.73,1.77,22.2,-
+NBIS,Nebius Group NV,WAIT,DOWN,211.67,211.37,213.75,25.8,2,3,NOT CONFIRMED,4,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.76,12.0,22.2,-
+PANW,Palo Alto Networks,WAIT,DOWN,263.25,261.12,263.6,57.6,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.66,5.45,22.2,-
+VTV,Vanguard Value ETF,WAIT,DOWN,211.46,211.46,212.19,26.4,2,3,NOT CONFIRMED,4,MODERATE BUY,Weak setup - missing confirmations | VIX: 22.2 (Worried),0.93,0.98,22.2,-
+XLE,Energy Select Sector ETF,WAIT,DOWN,58.26,58.23,58.67,26.0,2,3,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.96,2.23,22.2,-
+XLF,Financial Select Sector ETF,WAIT,DOWN,52.22,52.21,52.38,27.3,2,3,NOT CONFIRMED,4,MODERATE BUY,Weak setup - missing confirmations | VIX: 22.2 (Worried),0.84,1.24,22.2,-
+AI,"C3.ai, Inc. (AI)",WAIT,DOWN,10.81,10.66,10.85,56.7,2,3,NOT CONFIRMED,3,POTENTIAL BUY (Breakout),Breakout above 5-day high | VIX: 22.2 (Worried),0.94,7.12,22.2,-
+VRT,Vertiv Holdings Co.,WAIT,DOWN,280.96,276.92,281.33,66.8,2,3,NOT CONFIRMED,3,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.13,6.52,22.2,-
+CIENA,Ciena Corporation,NO ENTER,,,,,,,,,,NO DATA,No daily data,-,-,N/A,-
+CSTNL,iShares VII Public Limited Company - iShares Core S&P 500 UCITS ETF,NO ENTER,,,,,,,,,,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.63,1.49,22.2,-
+COST,Costco Wholesale,SHORT,UP,983.56,982.35,985.26,72.0,3,4,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.67,2.49,22.2,-
+XLP,Consumer Staples ETF,SHORT,UP,85.47,85.36,85.56,61.5,3,4,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.07,1.56,22.2,-
+ASML,ASML Holding,SHORT,DOWN,1733.0,1731.83,1748.03,37.4,2,4,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.47,4.55,22.2,-
+FIX,"Comfort Systems USA, Inc. (FIX)",SHORT,DOWN,1719.49,1708.75,1733.88,41.5,2,4,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.21,5.83,22.2,-
+IYW,iShares U.S. Technology ETF,SHORT,DOWN,235.31,235.28,236.54,36.7,2,4,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.43,2.91,22.2,-
+PWR,"Quanta Services, Inc.",SHORT,DOWN,650.91,650.75,656.2,39.0,2,4,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.25,4.32,22.2,-
+QQQM,Invesco NASDAQ 100 ETF (QQQM),SHORT,DOWN,285.64,285.63,286.94,38.1,2,4,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.33,2.09,22.2,-
+TQQQ,ProShares UltraPro QQQ,SHORT,DOWN,69.25,69.25,70.24,38.4,2,4,NOT CONFIRMED,6,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.2,6.91,22.2,-
+TSLA,Tesla Inc.,SHORT,DOWN,381.62,381.4,383.35,40.3,2,4,NOT CONFIRMED,6,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),1.03,4.45,22.2,-
+AIRR,First Trust RBA American Industrial RenaissanceTM ETF,SHORT,DOWN,122.67,122.66,123.41,32.5,2,4,NOT CONFIRMED,5,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.09,2.81,22.2,-
+NVDA,NVIDIA Corporation,SHORT,DOWN,200.34,200.31,201.88,34.3,2,4,NOT CONFIRMED,5,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.84,4.37,22.2,-
+AIQ,Global X Artificial Intelligence & Technology ETF,SHORT,DOWN,61.33,61.29,61.65,34.3,2,4,NOT CONFIRMED,4,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),1.2,3.69,22.2,-
+MSFT,Microsoft Corporation,SHORT,DOWN,397.26,397.18,399.3,20.7,2,4,NOT CONFIRMED,4,POTENTIAL BUY (Pullback),Good pullback near EMA20 | VIX: 22.2 (Worried),0.83,3.24,22.2,-
+UPS,United Parcel Service,SHORT,DOWN,103.25,103.05,103.58,58.0,2,4,NOT CONFIRMED,4,STRONG BUY (Pullback),Perfect pullback setup | VIX: 22.2 (Worried),0.78,2.72,22.2,-
