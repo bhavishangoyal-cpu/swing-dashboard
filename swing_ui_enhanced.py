@@ -348,7 +348,7 @@ def main():
                         "LongScore": "",
                         "ShortScore": "",
                         "CONFIRMED": "",
-                        "RangePos%": res["range_pos"],
+                        "RangePos%": "",
                     })
                 else:
                     rows.append({
