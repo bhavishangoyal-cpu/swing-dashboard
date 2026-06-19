@@ -1,346 +1,404 @@
-"""
-dip_buy_screener.py
-
-Local watchlist dip-buy scanner (target 5%).
-- Reads watchlist.csv (column 'Yahoo Ticker' or first column)
-- Uses yfinance for intraday (5m) and daily data
-- Scores setups and suggests entry/stop/targets (no order execution)
-- Configure parameters below
-"""
-
-import os
-import io
-import time
-import math
-import warnings
-from datetime import datetime, timedelta
-
-import numpy as np
+import streamlit as st
 import pandas as pd
+import numpy as np
 import yfinance as yf
+import os
 
-warnings.filterwarnings("ignore")
 
-# -----------------------
+# =========================
 # CONFIG
-# -----------------------
-WATCHLIST_CSV = "watchlist.csv"   # local file (first column or 'Yahoo Ticker')
-POLL_INTERVAL_SEC = 300           # how often to refresh (seconds)
-MIN_DOLLAR_VOLUME = 50_000_000    # liquidity gate ($)
-MIN_ATR_PCT = 0.008               # 0.8% -> 0.008
-MIN_MARKETCAP = 10_000_000_000    # optional gate (10B)
-MIN_SIGNALS_SAMPLE = 30           # minimum bars for intraday indicators
-TARGET_PROFIT_PCT = 0.05          # user goal: 5% profit target (changed from 55%)
-MAX_GAP_DOWN_PCT = 0.08           # ignore >8% gap downs (panic)
-MIN_GAP_DOWN_PCT = 0.01           # consider gap down >=1%
-USE_REALTIME_LOOP = False         # set True to run continuously
+# =========================
 
-OUTPUT_CSV = "dip_signals.csv"
+WATCHLIST_PATH = "watchlist.csv"
 
-# -----------------------
-# UTILITIES / INDICATORS
-# -----------------------
-def ema(series, span):
-    return series.ewm(span=span, adjust=False).mean()
+REQUIRED_COLS = {"Open", "High", "Low", "Close", "Volume"}
 
-def rsi(series, period=14):
+
+# =========================
+# INDICATORS
+# =========================
+
+def rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    series = series.astype(float)
     delta = series.diff()
-    up = delta.clip(lower=0)
-    down = -delta.clip(upper=0)
-    ma_up = up.ewm(alpha=1/period, adjust=False).mean()
-    ma_down = down.ewm(alpha=1/period, adjust=False).mean()
-    rs = ma_up / (ma_down + 1e-12)
-    return 100 - (100 / (1 + rs))
 
-def macd_hist(series, fast=12, slow=26, signal=9):
-    ema_fast = series.ewm(span=fast, adjust=False).mean()
-    ema_slow = series.ewm(span=slow, adjust=False).mean()
-    macd = ema_fast - ema_slow
-    macd_signal = macd.ewm(span=signal, adjust=False).mean()
-    return macd - macd_signal
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
 
-def true_range(df):
-    high = df['High']
-    low = df['Low']
-    prev = df['Close'].shift(1)
-    tr = pd.concat([high - low, (high - prev).abs(), (low - prev).abs()], axis=1).max(axis=1)
-    return tr
+    avg_gain = gain.rolling(period).mean()
+    avg_loss = loss.rolling(period).mean()
 
-def atr(df, period=14):
-    tr = true_range(df)
-    return tr.ewm(alpha=1/period, adjust=False).mean()
+    rs = avg_gain / (avg_loss + 1e-9)
+    rsi_val = 100 - (100 / (1 + rs))
+    return rsi_val
 
-def vwap(df):
-    tp = (df['High'] + df['Low'] + df['Close']) / 3
-    cum_vol = df['Volume'].cumsum()
-    cum_vp = (tp * df['Volume']).cumsum()
-    return cum_vp / cum_vol
 
-def beta_vs_market(daily_df, market_symbol="SPY"):
-    try:
-        m = yf.download(market_symbol, period="120d", progress=False)['Close']
-        s = daily_df['Close'].dropna()
-        common_index = s.index.intersection(m.index)
-        if len(common_index) < 30:
-            return np.nan
-        r_stock = s.loc[common_index].pct_change().dropna()
-        r_mkt = m.loc[common_index].pct_change().dropna()
-        cov = np.cov(r_stock, r_mkt)
-        beta = cov[0,1] / (cov[1,1] + 1e-12)
-        return float(beta)
-    except Exception:
-        return np.nan
+def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
+    df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
+    df["RSI14"] = rsi(df["Close"], 14)
+    df["VolAvg20"] = df["Volume"].rolling(20).mean()
+    return df
 
-# -----------------------
-# DATA FETCHING
-# -----------------------
-def load_watchlist(path=WATCHLIST_CSV):
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"{path} not found")
-    df = pd.read_csv(path, dtype=str)
-    df.columns = [c.strip() for c in df.columns]
-    if 'Yahoo Ticker' in df.columns:
-        tickers = df['Yahoo Ticker'].astype(str).str.strip().str.upper().dropna().tolist()
-    else:
-        tickers = df.iloc[:,0].astype(str).str.strip().str.upper().dropna().tolist()
-    return tickers
 
-def fetch_intraday_5m(ticker, days=7):
-    try:
-        df = yf.download(ticker, period=f"{days}d", interval="5m", progress=False, threads=False)
-        if df is None or df.empty:
-            return None
-        return df.dropna()
-    except Exception:
-        return None
+# =========================
+# HELPERS
+# =========================
 
-def fetch_daily(ticker, days=365):
-    try:
-        df = yf.download(ticker, period=f"{days}d", interval="1d", progress=False, threads=False)
-        if df is None or df.empty:
-            return None
-        return df.dropna()
-    except Exception:
-        return None
-
-# -----------------------
-# FILTERS & SCORING
-# -----------------------
-def liquidity_and_volatility_gate(daily_df):
-    try:
-        avg_dollar_vol = (daily_df['Close'] * daily_df['Volume']).tail(20).mean()
-        atr14 = atr(daily_df, period=14).iloc[-1]
-        atr_pct = atr14 / daily_df['Close'].iloc[-1] if atr14 is not None else 0
-        return avg_dollar_vol, atr_pct
-    except Exception:
-        return 0, 0
-
-def score_dip_setup(ticker, intraday_df, daily_df, qqq_intraday=None):
-    reasons = []
-    score = 0
-
-    avg_dollar_vol, atr_pct = liquidity_and_volatility_gate(daily_df)
-    if avg_dollar_vol < MIN_DOLLAR_VOLUME:
-        reasons.append(f"low dollar vol ${avg_dollar_vol:,.0f}")
-        return _result(ticker, 0, "AVOID", None, None, None, None, reasons, avg_dollar_vol, atr_pct)
-
-    if atr_pct < MIN_ATR_PCT:
-        reasons.append(f"low ATR% {atr_pct:.4f}")
-        return _result(ticker, 0, "AVOID", None, None, None, None, reasons, avg_dollar_vol, atr_pct)
-
-    if intraday_df is None or len(intraday_df) < MIN_SIGNALS_SAMPLE:
-        reasons.append("no intraday data")
-        return _result(ticker, 0, "AVOID", None, None, None, None, reasons, avg_dollar_vol, atr_pct)
-
-    df = intraday_df.copy()
-    price = df['Close'].iloc[-1]
-
-    df['EMA20'] = ema(df['Close'], span=20)
-    df['EMA50'] = ema(df['Close'], span=50)
-    df['RSI14'] = rsi(df['Close'], period=14)
-    df['MACD_H'] = macd_hist(df['Close'])
-    df['VWAP'] = vwap(df)
-
-    avg_5min_vol = df['Volume'].tail(60).mean() if len(df) >= 60 else df['Volume'].mean()
-    recent_breakout_vol = df['Volume'].iloc[-5:].max()
-    dip_volume = df['Volume'].iloc[-20:-1].mean() if len(df) > 20 else df['Volume'].mean()
-
-    try:
-        today = df.index.normalize()[-1]
-        day_df = df[df.index.normalize() == today]
-        first_bar = day_df.iloc[0]
-        prev_close = df['Close'].shift(1).loc[first_bar.name]
-        gap_pct = (first_bar['Open'] - prev_close) / prev_close if prev_close and not math.isnan(prev_close) else 0.0
-    except Exception:
-        gap_pct = 0.0
-
-    near_ema20 = abs(price - df['EMA20'].iloc[-1]) / price <= 0.008
-    reclaim_vwap = price > df['VWAP'].iloc[-1]
-    rsi_val = df['RSI14'].iloc[-1]
-    macd_up = df['MACD_H'].iloc[-1] > df['MACD_H'].iloc[-2] if len(df) >= 2 else False
-    rs_vs_qqq = None
-    if qqq_intraday is not None and not qqq_intraday.empty:
-        try:
-            stock_ret = price / df['Close'].iloc[-6] - 1
-            qqq_ret = qqq_intraday['Close'].iloc[-1] / qqq_intraday['Close'].iloc[-6] - 1
-            rs_vs_qqq = stock_ret - qqq_ret
-        except Exception:
-            rs_vs_qqq = None
-
-    # Price context (20)
-    if near_ema20:
-        score += 10; reasons.append("near 5m EMA20")
-    if price > ema(daily_df['Close'], span=50).iloc[-1]:
-        score += 10; reasons.append("above daily 50EMA")
-
-    # Momentum (25)
-    if 30 <= rsi_val <= 40:
-        score += 10; reasons.append(f"RSI {rsi_val:.1f} in 30-40")
-    elif 40 < rsi_val <= 50:
-        score += 5; reasons.append(f"RSI {rsi_val:.1f} in 40-50")
-    if macd_up:
-        score += 10; reasons.append("MACD hist rising")
-    if reclaim_vwap:
-        score += 5; reasons.append("above VWAP")
-
-    # Volume (20)
-    if recent_breakout_vol >= 1.5 * avg_5min_vol:
-        score += 10; reasons.append("recent breakout vol >=1.5x avg")
-    if dip_volume < recent_breakout_vol:
-        score += 10; reasons.append("dip volume lower than breakout vol")
-
-    # Relative strength (15)
-    if rs_vs_qqq is not None and rs_vs_qqq > 0:
-        score += 15; reasons.append("outperforming QQQ recently")
-    elif rs_vs_qqq is None:
-        if price > df['Close'].iloc[-30] if len(df) > 30 else False:
-            score += 7; reasons.append("intraday uptrend (partial RS)")
-
-    # News placeholder (10)
-    score += 10; reasons.append("news assumed neutral (no API)")
-
-    # Gap down check
-    if gap_pct <= -MIN_GAP_DOWN_PCT and gap_pct >= -MAX_GAP_DOWN_PCT:
-        score += 5; reasons.append(f"gap down {gap_pct*100:.1f}% (candidate)")
-    elif gap_pct < -MAX_GAP_DOWN_PCT:
-        reasons.append(f"large gap down {gap_pct*100:.1f}% (skip)"); return _result(ticker, 0, "AVOID", None, None, None, None, reasons, avg_dollar_vol, atr_pct)
-
-    beta = beta_vs_market(daily_df)
-    if not math.isnan(beta) and beta >= 1.5 and beta <= 3.0:
-        score += 5; reasons.append(f"beta {beta:.2f} in sweet spot")
-
-    score = min(100, int(round(score)))
-    if score >= 75:
-        signal = "STRONG"
-    elif score >= 55:
-        signal = "CONSIDER"
-    elif score >= 35:
-        signal = "WATCH"
-    else:
-        signal = "AVOID"
-
-    entry = float(df['EMA20'].iloc[-1]) if near_ema20 else float(price)
-    atr5 = atr(df, period=14).iloc[-1] if 'ATR' not in df.columns else df['ATR'].iloc[-1]
-    if math.isnan(atr5) or atr5 == 0:
-        atr5 = (df['High'] - df['Low']).tail(10).mean()
-    recent_swing_low = df['Low'].tail(20).min()
-    stop = float(max(recent_swing_low - 0.002 * price, entry - 2 * atr5))
-    target1 = round(entry * (1 + 0.03), 6)   # quick 3% partial
-    target2 = round(entry * (1 + TARGET_PROFIT_PCT), 6)  # main target (5%)
-    return _result(ticker, score, signal, entry, stop, target1, target2, reasons, avg_dollar_vol, atr_pct, beta=beta)
-
-def _result(ticker, score, signal, entry, stop, t1, t2, reasons, avg_dollar_vol, atr_pct, beta=None):
+def get_last_values(df: pd.DataFrame):
     return {
-        "ticker": ticker,
-        "score": score,
-        "signal": signal,
-        "entry": entry,
-        "stop": stop,
-        "target1": t1,
-        "target2": t2,
-        "reasons": reasons,
-        "avg_dollar_vol": avg_dollar_vol,
-        "atr_pct": atr_pct,
-        "beta": beta
+        "o_last": float(df["Open"].iloc[-1]),
+        "h_last": float(df["High"].iloc[-1]),
+        "l_last": float(df["Low"].iloc[-1]),
+        "c_last": float(df["Close"].iloc[-1]),
+        "v_last": float(df["Volume"].iloc[-1]),
+        "o_prev": float(df["Open"].iloc[-2]),
+        "h_prev": float(df["High"].iloc[-2]),
+        "l_prev": float(df["Low"].iloc[-2]),
+        "c_prev": float(df["Close"].iloc[-2]),
+        "ema20_last": float(df["EMA20"].iloc[-1]),
+        "ema50_last": float(df["EMA50"].iloc[-1]),
+        "rsi_last": float(df["RSI14"].iloc[-1]),
+        "rsi_prev": float(df["RSI14"].iloc[-2]),
+        "vol_avg20": float(df["VolAvg20"].iloc[-1]),
+        "day_range_pos": (float(df["Close"].iloc[-1]) - float(df["Low"].iloc[-1])) / (float(df["High"].iloc[-1]) - float(df["Low"].iloc[-1]) + 1e-9),
     }
 
-# -----------------------
-# MAIN SCAN LOOP
-# -----------------------
-def run_scan_once():
-    tickers = load_watchlist(WATCHLIST_CSV)
-    qqq = fetch_intraday_5m("QQQ", days=7)
-    results = []
-    errors = []
 
-    for t in tickers:
-        try:
-            intraday = fetch_intraday_5m(t, days=7)
-            daily = fetch_daily(t, days=365)
-            if daily is None or daily.empty:
-                print(f"{t}: no daily data, skipping")
-                # still append a consistent result so DataFrame columns exist
-                results.append(_result(t, 0, "AVOID", None, None, None, None, ["no daily data"], 0, 0, beta=None))
-                continue
+def detect_trend(ema20_last: float, ema50_last: float) -> str:
+    if np.isnan(ema20_last) or np.isnan(ema50_last):
+        return "UNKNOWN"
+    if ema20_last > ema50_last:
+        return "UP"
+    elif ema20_last < ema50_last:
+        return "DOWN"
+    return "SIDEWAYS"
 
-            res = score_dip_setup(t, intraday, daily, qqq_intraday=qqq)
-            # ensure res is a dict and contains expected keys
-            if not isinstance(res, dict):
-                raise ValueError(f"score_dip_setup returned non-dict for {t}")
-            # normalize missing keys by re-creating via _result if needed
-            expected_keys = {"ticker","score","signal","entry","stop","target1","target2","reasons","avg_dollar_vol","atr_pct","beta"}
-            if not expected_keys.issubset(set(res.keys())):
-                # fill missing keys with safe defaults
-                safe = {k: res.get(k, None) for k in expected_keys}
-                res = safe
-            results.append(res)
 
-            # print summary for strong signals
-            if res.get('signal') in ("STRONG", "CONSIDER"):
-                print(f"[{res.get('signal')}] {res.get('ticker')} score={res.get('score')} entry={res.get('entry')} stop={res.get('stop')} target={res.get('target2')}")
-                for r in res.get('reasons', []):
-                    print("   -", r)
+def detect_support_resistance(df: pd.DataFrame, lookback: int = 40):
+    recent = df.tail(lookback)
 
-        except Exception as e:
-            # log error and append a safe AVOID row so DataFrame columns remain consistent
-            err_msg = f"Error scanning {t}: {e}"
-            print(err_msg)
-            errors.append(err_msg)
-            results.append(_result(t, 0, "AVOID", None, None, None, None, [str(e)], 0, 0, beta=None))
+    support = recent['Low'].rolling(5).min().iloc[-1]
+    resistance = recent['High'].rolling(5).max().iloc[-1]
 
-    # Build DataFrame safely
-    if not results:
-        # no results at all: create empty DataFrame with expected columns
-        cols = ["ticker","score","signal","entry","stop","target1","target2","reasons","avg_dollar_vol","atr_pct","beta"]
-        df_out = pd.DataFrame(columns=cols)
-    else:
-        df_out = pd.DataFrame(results)
+    return support, resistance
 
-    # Ensure 'score' column exists and is numeric
-    if 'score' not in df_out.columns:
-        df_out['score'] = 0
-    df_out['score'] = pd.to_numeric(df_out['score'], errors='coerce').fillna(0).astype(int)
 
-    # Sort safely
+
+def is_near_level(price: float, level: float, tolerance: float = 0.02) -> bool:
+    if level <= 0:
+        return False
+    return abs(price - level) / level <= tolerance
+
+
+def bullish_engulfing(o_prev, c_prev, o_last, c_last) -> bool:
+    return (c_prev < o_prev) and (c_last > o_last) and (c_last >= o_prev) and (o_last <= c_prev)
+
+
+def bearish_engulfing(o_prev, c_prev, o_last, c_last) -> bool:
+    return (c_prev > o_prev) and (c_last < o_last) and (c_last <= o_prev) and (o_last >= c_prev)
+
+
+def hammer(o_last, h_last, l_last, c_last) -> bool:
+    body = abs(c_last - o_last)
+    rng = h_last - l_last
+    if rng == 0:
+        return False
+    lower_shadow = min(o_last, c_last) - l_last
+    return (lower_shadow > 2 * body) and (body / rng < 0.4)
+
+
+def volume_strong(v_last: float, vol_avg20: float, factor: float = 1.5) -> bool:
+    if np.isnan(vol_avg20) or vol_avg20 == 0:
+        return False
+    return v_last > factor * vol_avg20
+
+
+# =========================
+# SAFE HISTORY LOADER
+# =========================
+
+def safe_history(ticker: str, interval: str, period: str = "7d") -> pd.DataFrame | None:
     try:
-        df_out = df_out.sort_values(by="score", ascending=False).reset_index(drop=True)
-    except Exception as e:
-        print("Warning: could not sort by score:", e)
+        stock = yf.Ticker(ticker)
+        df = stock.history(period=period, interval=interval, prepost=False)
+    except:
+        return None
 
-    # Save CSV
-    try:
-        df_out.to_csv(OUTPUT_CSV, index=False)
-        print(f"Scan complete. Results saved to {OUTPUT_CSV}")
-    except Exception as e:
-        print("Warning: failed to save CSV:", e)
+    if df is None or df.empty:
+        return None
 
-    # Optionally print top candidates
-    top = df_out[df_out['signal'].isin(['STRONG','CONSIDER'])].head(20)
-    if not top.empty:
-        print("\nTop candidates:")
-        print(top[['ticker','score','signal','entry','stop','target2','avg_dollar_vol','atr_pct','beta']].to_string(index=False))
+    if not REQUIRED_COLS.issubset(df.columns):
+        return None
+
+    df = df.dropna(subset=list(REQUIRED_COLS))
+    if df.empty:
+        return None
+
+    return df
+
+
+# =========================
+# ANALYSIS ENGINE
+# =========================
+
+def analyze_ticker(ticker: str, interval: str) -> dict:
+    data = safe_history(ticker, interval=interval, period="7d")
+    if data is None or len(data) < 60:
+        return {"ticker": ticker, "status": "NO_DATA", "interval": interval}
+
+    df = compute_indicators(data).dropna()
+    if len(df) < 30:
+        return {"ticker": ticker, "status": "NO_DATA", "interval": interval}
+
+    vals = get_last_values(df)
+
+    # =========================
+    # FIXED TREND LOGIC (STRONG)
+    # =========================
+    trend = "UP" if (vals["c_last"] > vals["ema20_last"] > vals["ema50_last"]) else "DOWN"
+
+    # =========================
+    # FIXED SUPPORT/RESISTANCE
+    # =========================
+    support, resistance = detect_support_resistance(df)
+
+    near_support = is_near_level(vals["c_last"], support, tolerance=0.02)
+    near_resistance = is_near_level(vals["c_last"], resistance, tolerance=0.02)
+
+    rsi_up = vals["rsi_last"] > vals["rsi_prev"]
+    rsi_down = vals["rsi_last"] < vals["rsi_prev"]
+
+    bull_eng = bullish_engulfing(vals["o_prev"], vals["c_prev"], vals["o_last"], vals["c_last"])
+    bear_eng = bearish_engulfing(vals["o_prev"], vals["c_prev"], vals["o_last"], vals["c_last"])
+    is_hammer = hammer(vals["o_last"], vals["h_last"], vals["l_last"], vals["c_last"])
+
+    vol_ok = volume_strong(vals["v_last"], vals["vol_avg20"], factor=1.5)
+
+    # =========================
+    # LONG SCORE
+    # =========================
+    long_score = sum([
+        trend == "UP",
+        near_support,
+        (28 <= vals["rsi_last"] <= 70) and rsi_up,
+        bull_eng or is_hammer,
+        vol_ok,
+        vals["day_range_pos"] >= 0.75,  # closing in top 25% of day's range
+    ])
+
+    # =========================
+    # SHORT SCORE
+    # =========================
+    short_score = sum([
+        trend == "DOWN",
+        near_resistance,
+        (55 <= vals["rsi_last"] <= 75) and rsi_down,
+        bear_eng,
+        vol_ok,
+    ])
+
+    # =========================
+    # FIXED DECISION LOGIC
+    # =========================
+    if long_score >= 4:
+        decision = "BUY"
+    elif short_score >= 4:
+        decision = "SHORT"
+    elif (trend in ["UP", "DOWN"]) and (near_support or near_resistance):
+        decision = "WAIT"
     else:
-        print("No strong/consider signals right now.")
+        decision = "NO ENTER"
 
-    # return DataFrame for further use
-    return df_out
+    # =========================
+    # CONFIRMED LOGIC (SAFE)
+    # =========================
+    confirmed = (
+        (decision == "BUY") and
+        (trend == "UP") and
+        (long_score >= 3) and
+        (28 <= vals["rsi_last"] <= 70) and
+        near_support and
+        (vals["v_last"] > 1.5 * vals["vol_avg20"])
+    )
+
+    confirmed_label = "CONFIRMED" if confirmed else "NOT CONFIRMED"
+
+    # =========================
+    # NEW: SIGNAL STRENGTH (0–10)
+    # =========================
+    strength = 0
+
+    # Trend strength
+    if vals["c_last"] > vals["ema20_last"] > vals["ema50_last"]:
+        strength += 2
+    elif vals["ema20_last"] > vals["ema50_last"]:
+        strength += 1
+
+    # RSI strength
+    if 35 <= vals["rsi_last"] <= 50:
+        strength += 2
+    elif 28 <= vals["rsi_last"] <= 70:
+        strength += 1
+
+    # Support strength
+    dist = abs(vals["c_last"] - support) / support
+    if dist <= 0.01:
+        strength += 2
+    elif dist <= 0.02:
+        strength += 1
+
+    # Volume strength
+    if vals["v_last"] > 1.3 * vals["vol_avg20"]:
+        strength += 2
+    elif vals["v_last"] > 1.1 * vals["vol_avg20"]:
+        strength += 1
+
+    # Candle strength
+    if bull_eng or is_hammer:
+        strength += 1
+
+    # Multi-timeframe alignment
+    if confirmed:
+        strength += 1
+
+    return {
+        "ticker": ticker,
+        "status": "OK",
+        "interval": interval,
+        "trend": trend,
+        "close": vals["c_last"],
+        "support": support,
+        "resistance": resistance,
+        "rsi": vals["rsi_last"],
+        "long_score": long_score,
+        "short_score": short_score,
+        "decision": decision,
+        "confirmed": confirmed_label,
+        "strength": strength,
+        "range_pos": round(vals["day_range_pos"] * 100, 1),
+    }
+
+
+# =========================
+# STREAMLIT UI
+# =========================
+
+def load_watchlist(path: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        st.error(f"Watchlist file not found: {path}")
+        return pd.DataFrame(columns=["Yahoo Ticker", "Company Name"])
+
+    df = pd.read_csv(path)
+    df["Yahoo Ticker"] = df["Yahoo Ticker"].astype(str).str.strip()
+    df["Company Name"] = df["Company Name"].astype(str).str.strip()
+
+    return df[["Yahoo Ticker", "Company Name"]]
+
+
+
+def decision_color(val: str) -> str:
+    if val == "BUY":
+        return "background-color:#2ECC71;color:black;"
+    elif val == "WAIT":
+        return "background-color:#F1C40F;color:black;"
+    elif val == "NO ENTER":
+        return "background-color:#E74C3C;color:white;"
+    return ""
+
+
+def confirmed_color(val: str) -> str:
+    if val == "CONFIRMED":
+        return "background-color:#27AE60;color:white;"
+    else:
+        return "background-color:#AAB7B8;color:black;"
+
+
+def main():
+    st.set_page_config(page_title="Atharv Swing Scanner", layout="wide")
+    st.title("Atharv – Swing Trading Scanner (5m + 15m)")
+
+    watchlist_df = load_watchlist(WATCHLIST_PATH)
+    tickers = watchlist_df["Yahoo Ticker"].tolist()
+    st.write(f"Loaded **{len(tickers)}** tickers from watchlist.csv")
+
+    intervals = ["5m", "15m"]
+
+    if st.button("Run Scanner"):
+        for interval in intervals:
+            st.subheader(f"Interval: {interval}")
+
+            rows = []
+            for _, row in watchlist_df.iterrows():
+                t = row["Yahoo Ticker"]
+                company_name = row["Company Name"]
+                res = analyze_ticker(t, interval)
+
+                if res["status"] != "OK":
+                    rows.append({
+                        "Ticker": t,
+                        "Company (Ticker)": f"{company_name} ({t})",
+                        "Decision": "NO ENTER",
+                        "Trend": "",
+                        "Close": "",
+                        "Support": "",
+                        "Resistance": "",
+                        "RSI": "",
+                        "LongScore": "",
+                        "ShortScore": "",
+                        "CONFIRMED": "",
+                        "RangePos%": "",
+                    })
+                else:
+                    rows.append({
+                        "Ticker": res["ticker"],
+                        "Company (Ticker)": f"{company_name} ({res['ticker']})",
+                        "Decision": res["decision"],
+                        "Trend": res["trend"],
+                        "Close": round(res["close"], 2),
+                        "Support": round(res["support"], 2),
+                        "Resistance": round(res["resistance"], 2),
+                        "RSI": round(res["rsi"], 1),
+                        "LongScore": res["long_score"],
+                        "ShortScore": res["short_score"],
+                        "CONFIRMED": res["confirmed"],
+                        "Strength": res["strength"],
+                        "RangePos%": res["range_pos"],
+                    })
+
+            df_res = pd.DataFrame(rows)
+
+            df_res["DecisionRank"] = df_res["Decision"].map({
+                "BUY": 0,
+                "WAIT": 1,
+                "NO ENTER": 2
+            }).fillna(3)
+
+            df_res["ConfirmedRank"] = df_res["CONFIRMED"].map({
+                "CONFIRMED": 0,
+                "NOT CONFIRMED": 1
+            }).fillna(2)
+
+            # Sort: BUY first, then WAIT, then NO ENTER
+            order = {"BUY": 0, "WAIT": 1, "NO ENTER": 2}
+            df_res["Rank"] = df_res["Decision"].map(order).fillna(3)
+            df_res = df_res.sort_values(
+                ["DecisionRank", "ConfirmedRank", "Strength", "LongScore"],
+                ascending=[True, True, False, False]
+            ).drop(columns=["DecisionRank", "ConfirmedRank"])
+
+            # Style decision + confirmed columns
+            styled = df_res.style.apply(
+                lambda col: [decision_color(v) for v in col],
+                subset=["Decision"]
+            ).apply(
+                lambda col: [confirmed_color(v) for v in col],
+                subset=["CONFIRMED"]
+            )
+
+            st.dataframe(styled, use_container_width=True)
+
+
+if __name__ == "__main__":
+    main()

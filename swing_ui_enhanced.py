@@ -62,7 +62,6 @@ def get_last_values(df: pd.DataFrame):
         "rsi_last": float(df["RSI14"].iloc[-1]),
         "rsi_prev": float(df["RSI14"].iloc[-2]),
         "vol_avg20": float(df["VolAvg20"].iloc[-1]),
-        "day_range_pos": (float(df["Close"].iloc[-1]) - float(df["Low"].iloc[-1])) / (float(df["High"].iloc[-1]) - float(df["Low"].iloc[-1]) + 1e-9),
     }
 
 
@@ -109,7 +108,7 @@ def hammer(o_last, h_last, l_last, c_last) -> bool:
     return (lower_shadow > 2 * body) and (body / rng < 0.4)
 
 
-def volume_strong(v_last: float, vol_avg20: float, factor: float = 1.5) -> bool:
+def volume_strong(v_last: float, vol_avg20: float, factor: float = 1.2) -> bool:
     if np.isnan(vol_avg20) or vol_avg20 == 0:
         return False
     return v_last > factor * vol_avg20
@@ -174,7 +173,7 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
     bear_eng = bearish_engulfing(vals["o_prev"], vals["c_prev"], vals["o_last"], vals["c_last"])
     is_hammer = hammer(vals["o_last"], vals["h_last"], vals["l_last"], vals["c_last"])
 
-    vol_ok = volume_strong(vals["v_last"], vals["vol_avg20"], factor=1.5)
+    vol_ok = volume_strong(vals["v_last"], vals["vol_avg20"], factor=1.1)
 
     # =========================
     # LONG SCORE
@@ -182,10 +181,9 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
     long_score = sum([
         trend == "UP",
         near_support,
-        (28 <= vals["rsi_last"] <= 70) and rsi_up,
+        (28 <= vals["rsi_last"] <= 55) and rsi_up,
         bull_eng or is_hammer,
         vol_ok,
-        vals["day_range_pos"] >= 0.75,  # closing in top 25% of day's range
     ])
 
     # =========================
@@ -218,9 +216,9 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
         (decision == "BUY") and
         (trend == "UP") and
         (long_score >= 3) and
-        (28 <= vals["rsi_last"] <= 70) and
+        (28 <= vals["rsi_last"] <= 55) and
         near_support and
-        (vals["v_last"] > 1.5 * vals["vol_avg20"])
+        (vals["v_last"] > 1.1 * vals["vol_avg20"])
     )
 
     confirmed_label = "CONFIRMED" if confirmed else "NOT CONFIRMED"
@@ -239,7 +237,7 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
     # RSI strength
     if 35 <= vals["rsi_last"] <= 50:
         strength += 2
-    elif 28 <= vals["rsi_last"] <= 70:
+    elif 28 <= vals["rsi_last"] <= 55:
         strength += 1
 
     # Support strength
@@ -277,7 +275,6 @@ def analyze_ticker(ticker: str, interval: str) -> dict:
         "decision": decision,
         "confirmed": confirmed_label,
         "strength": strength,
-        "range_pos": round(vals["day_range_pos"] * 100, 1),
     }
 
 
@@ -348,7 +345,6 @@ def main():
                         "LongScore": "",
                         "ShortScore": "",
                         "CONFIRMED": "",
-                        "RangePos%": "",
                     })
                 else:
                     rows.append({
@@ -364,7 +360,6 @@ def main():
                         "ShortScore": res["short_score"],
                         "CONFIRMED": res["confirmed"],
                         "Strength": res["strength"],
-                        "RangePos%": res["range_pos"],
                     })
 
             df_res = pd.DataFrame(rows)
@@ -402,6 +397,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 #STRATEGY-2
 
