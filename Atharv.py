@@ -1,404 +1,487 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
 import yfinance as yf
-import os
+import pandas as pd
+from google import genai
+from google.genai import types
+
+# =====================================================================
+# 1. PAGE CONFIGURATION & SECURITY
+# =====================================================================
+st.set_page_config(page_title="Atharv Corporate Guide", page_icon="📈", layout="wide")
+
+# Securely pull your free Gemini API Key
+API_KEY = "AQ.Ab8RN6J3k0y2pU_MK_PsjfQmrDGqaw5jvXRLHRpBeofM5ecx6g"
 
 
-# =========================
-# CONFIG
-# =========================
-
-WATCHLIST_PATH = "watchlist.csv"
-
-REQUIRED_COLS = {"Open", "High", "Low", "Close", "Volume"}
-
-
-# =========================
-# INDICATORS
-# =========================
-
-def rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    series = series.astype(float)
-    delta = series.diff()
-
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-
-    avg_gain = gain.rolling(period).mean()
-    avg_loss = loss.rolling(period).mean()
-
-    rs = avg_gain / (avg_loss + 1e-9)
-    rsi_val = 100 - (100 / (1 + rs))
-    return rsi_val
+@st.cache_resource
+def get_ai_client():
+    if API_KEY and API_KEY != "YOUR_FREE_GEMINI_API_KEY":
+        try:
+            return genai.Client(api_key=API_KEY)
+        except Exception:
+            return None
+    return None
 
 
-def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
-    df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
-    df["RSI14"] = rsi(df["Close"], 14)
-    df["VolAvg20"] = df["Volume"].rolling(20).mean()
-    return df
+client = get_ai_client()
 
+# =====================================================================
+# 2. WEB INTERFACE TITLE
+# =====================================================================
+st.title("🚀 Atharv.py — Corporate Swing Trading Co-Pilot")
+st.markdown(
+    "Designed for family-managed corporate accounts to identify momentum swings and analyze macro risk factors.")
+st.write("---")
 
-# =========================
-# HELPERS
-# =========================
+# Sidebar Search & Portfolio Input Layout
+st.sidebar.header("Asset Selection")
+ticker_input = st.sidebar.text_input("Enter Ticker Symbol", value="NVDA").upper().strip()
+st.sidebar.caption("💡 For Canadian assets, use the '.TO' suffix (e.g., XIU.TO or SHOP.TO)")
 
-def get_last_values(df: pd.DataFrame):
-    return {
-        "o_last": float(df["Open"].iloc[-1]),
-        "h_last": float(df["High"].iloc[-1]),
-        "l_last": float(df["Low"].iloc[-1]),
-        "c_last": float(df["Close"].iloc[-1]),
-        "v_last": float(df["Volume"].iloc[-1]),
-        "o_prev": float(df["Open"].iloc[-2]),
-        "h_prev": float(df["High"].iloc[-2]),
-        "l_prev": float(df["Low"].iloc[-2]),
-        "c_prev": float(df["Close"].iloc[-2]),
-        "ema20_last": float(df["EMA20"].iloc[-1]),
-        "ema50_last": float(df["EMA50"].iloc[-1]),
-        "rsi_last": float(df["RSI14"].iloc[-1]),
-        "rsi_prev": float(df["RSI14"].iloc[-2]),
-        "vol_avg20": float(df["VolAvg20"].iloc[-1]),
-        "day_range_pos": (float(df["Close"].iloc[-1]) - float(df["Low"].iloc[-1])) / (float(df["High"].iloc[-1]) - float(df["Low"].iloc[-1]) + 1e-9),
-    }
+st.sidebar.write("---")
+st.sidebar.header("💰 Your Position Details")
+my_purchase_price = st.sidebar.number_input("Enter Your Purchase Price ($)", value=0.0, step=0.01,
+                                            help="Set to 0.0 if you don't own this stock yet.")
 
+# Run Analysis Execution
+if ticker_input:
+    ticker = yf.Ticker(ticker_input)
 
-def detect_trend(ema20_last: float, ema50_last: float) -> str:
-    if np.isnan(ema20_last) or np.isnan(ema50_last):
-        return "UNKNOWN"
-    if ema20_last > ema50_last:
-        return "UP"
-    elif ema20_last < ema50_last:
-        return "DOWN"
-    return "SIDEWAYS"
+    with st.spinner(f"Analyzing {ticker_input} historical structures and pulling live headlines..."):
+        try:
+            info = ticker.info
+            history = ticker.history(period="2y")
 
+            # -----------------------------------------------------------------
+            # 🧩 SHARE STATS & FINANCIAL HEALTH PARSING ENGINE
+            # -----------------------------------------------------------------
+            shares_outstanding = info.get('sharesOutstanding', None)
+            float_shares = info.get('floatShares', None)
+            insider_pct = info.get('heldPercentInsiders', 0) * 100
+            inst_pct = info.get('heldPercentInstitutions', 0) * 100
 
-def detect_support_resistance(df: pd.DataFrame, lookback: int = 40):
-    recent = df.tail(lookback)
+            # Get the 3-month average volume
+            avg_vol_3m = info.get('averageVolume', None) or info.get('averageDailyVolume3Month', None)
 
-    support = recent['Low'].rolling(5).min().iloc[-1]
-    resistance = recent['High'].rolling(5).max().iloc[-1]
+            # Math for the Turnover percentage
+            if avg_vol_3m and shares_outstanding:
+                daily_turnover_pct = (avg_vol_3m / shares_outstanding) * 100
+            else:
+                daily_turnover_pct = None
 
-    return support, resistance
+            # Short seller stats
+            shares_short = info.get('sharesShort', None)
+            shares_short_prior = info.get('sharesShortPriorMonth', None)
+            short_ratio = info.get('shortRatio', None)
+            short_pct_float = info.get('shortPercentOfFloat', 0) * 100
 
+            # Calculate monthly short trajectory trend
+            if shares_short and shares_short_prior and shares_short_prior > 0:
+                short_change_pct = ((shares_short - shares_short_prior) / shares_short_prior) * 100
+            else:
+                short_change_pct = None
 
+            # Corporate Health Variables
+            profit_margin = info.get('profitMargins', 0) * 100
+            debt_to_equity = info.get('debtToEquity', None)
 
-def is_near_level(price: float, level: float, tolerance: float = 0.02) -> bool:
-    if level <= 0:
-        return False
-    return abs(price - level) / level <= tolerance
+        except Exception as e:
+            st.error(f"Could not load data for '{ticker_input}'. Please verify the symbol or your internet connection.")
+            st.stop()
 
+    if history.empty:
+        st.error(f"No trading background found for symbol: {ticker_input}")
+        st.stop()
 
-def bullish_engulfing(o_prev, c_prev, o_last, c_last) -> bool:
-    return (c_prev < o_prev) and (c_last > o_last) and (c_last >= o_prev) and (o_last <= c_prev)
+    # -----------------------------------------------------------------
+    # DATA ASSIGNMENT FOR PRIMARY METRICS
+    # -----------------------------------------------------------------
+    name = info.get('longName', 'N/A')
+    sector = info.get('sector', 'N/A')
+    industry = info.get('industry', 'N/A')
+    summary = info.get('longBusinessSummary', 'No corporate summary available.')
 
+    pe_ratio = info.get('trailingPE', 'N/A')
+    forward_pe = info.get('forwardPE', 'N/A')
+    market_cap = info.get('marketCap', 'N/A')
 
-def bearish_engulfing(o_prev, c_prev, o_last, c_last) -> bool:
-    return (c_prev > o_prev) and (c_last < o_last) and (c_last <= o_prev) and (o_last >= c_prev)
+    avg_volume = info.get('averageVolume', 0)
+    beta = info.get('beta', 1.0)
+    held_by_institutions = info.get('heldPercentInstitutions', 0) * 100
 
+    current_price = info.get('currentPrice', history['Close'].iloc[-1])
+    fifty_two_high = info.get('fiftyTwoWeekHigh', max(history['Close'][-252:]))
+    fifty_two_low = info.get('fiftyTwoWeekLow', min(history['Close'][-252:]))
 
-def hammer(o_last, h_last, l_last, c_last) -> bool:
-    body = abs(c_last - o_last)
-    rng = h_last - l_last
-    if rng == 0:
-        return False
-    lower_shadow = min(o_last, c_last) - l_last
-    return (lower_shadow > 2 * body) and (body / rng < 0.4)
+    # Technical Calculations
+    history['MA50'] = history['Close'].rolling(window=50).mean()
+    history['MA200'] = history['Close'].rolling(window=200).mean()
+    ma50_now = history['MA50'].iloc[-1]
+    ma200_now = history['MA200'].iloc[-1]
+    pct_from_high = ((fifty_two_high - current_price) / fifty_two_high) * 100
 
+    # -----------------------------------------------------------------
+    # 🧩 ADVANCED: MULTI-STAGE DOWNTREND DIAGNOSTIC ENGINE MATH
+    # -----------------------------------------------------------------
+    history['MA21'] = history['Close'].rolling(window=21).mean()
+    ma21_now = history['MA21'].iloc[-1]
 
-def volume_strong(v_last: float, vol_avg20: float, factor: float = 1.5) -> bool:
-    if np.isnan(vol_avg20) or vol_avg20 == 0:
-        return False
-    return v_last > factor * vol_avg20
-
-
-# =========================
-# SAFE HISTORY LOADER
-# =========================
-
-def safe_history(ticker: str, interval: str, period: str = "7d") -> pd.DataFrame | None:
-    try:
-        stock = yf.Ticker(ticker)
-        df = stock.history(period=period, interval=interval, prepost=False)
-    except:
-        return None
-
-    if df is None or df.empty:
-        return None
-
-    if not REQUIRED_COLS.issubset(df.columns):
-        return None
-
-    df = df.dropna(subset=list(REQUIRED_COLS))
-    if df.empty:
-        return None
-
-    return df
-
-
-# =========================
-# ANALYSIS ENGINE
-# =========================
-
-def analyze_ticker(ticker: str, interval: str) -> dict:
-    data = safe_history(ticker, interval=interval, period="7d")
-    if data is None or len(data) < 60:
-        return {"ticker": ticker, "status": "NO_DATA", "interval": interval}
-
-    df = compute_indicators(data).dropna()
-    if len(df) < 30:
-        return {"ticker": ticker, "status": "NO_DATA", "interval": interval}
-
-    vals = get_last_values(df)
-
-    # =========================
-    # FIXED TREND LOGIC (STRONG)
-    # =========================
-    trend = "UP" if (vals["c_last"] > vals["ema20_last"] > vals["ema50_last"]) else "DOWN"
-
-    # =========================
-    # FIXED SUPPORT/RESISTANCE
-    # =========================
-    support, resistance = detect_support_resistance(df)
-
-    near_support = is_near_level(vals["c_last"], support, tolerance=0.02)
-    near_resistance = is_near_level(vals["c_last"], resistance, tolerance=0.02)
-
-    rsi_up = vals["rsi_last"] > vals["rsi_prev"]
-    rsi_down = vals["rsi_last"] < vals["rsi_prev"]
-
-    bull_eng = bullish_engulfing(vals["o_prev"], vals["c_prev"], vals["o_last"], vals["c_last"])
-    bear_eng = bearish_engulfing(vals["o_prev"], vals["c_prev"], vals["o_last"], vals["c_last"])
-    is_hammer = hammer(vals["o_last"], vals["h_last"], vals["l_last"], vals["c_last"])
-
-    vol_ok = volume_strong(vals["v_last"], vals["vol_avg20"], factor=1.5)
-
-    # =========================
-    # LONG SCORE
-    # =========================
-    long_score = sum([
-        trend == "UP",
-        near_support,
-        (28 <= vals["rsi_last"] <= 70) and rsi_up,
-        bull_eng or is_hammer,
-        vol_ok,
-        vals["day_range_pos"] >= 0.75,  # closing in top 25% of day's range
-    ])
-
-    # =========================
-    # SHORT SCORE
-    # =========================
-    short_score = sum([
-        trend == "DOWN",
-        near_resistance,
-        (55 <= vals["rsi_last"] <= 75) and rsi_down,
-        bear_eng,
-        vol_ok,
-    ])
-
-    # =========================
-    # FIXED DECISION LOGIC
-    # =========================
-    if long_score >= 4:
-        decision = "BUY"
-    elif short_score >= 4:
-        decision = "SHORT"
-    elif (trend in ["UP", "DOWN"]) and (near_support or near_resistance):
-        decision = "WAIT"
+    if ma21_now and ma21_now > 0:
+        trend_cushion_pct = ((current_price - ma21_now) / ma21_now) * 100
     else:
-        decision = "NO ENTER"
+        trend_cushion_pct = 0.0
 
-    # =========================
-    # CONFIRMED LOGIC (SAFE)
-    # =========================
-    confirmed = (
-        (decision == "BUY") and
-        (trend == "UP") and
-        (long_score >= 3) and
-        (28 <= vals["rsi_last"] <= 70) and
-        near_support and
-        (vals["v_last"] > 1.5 * vals["vol_avg20"])
-    )
+    # Volume and structural anomaly checks
+    recent_volume = history['Volume'].iloc[-5:].mean()
+    long_avg_volume = info.get('averageVolume', 1) if info.get('averageVolume', 1) > 0 else 1
+    volume_spike_ratio = recent_volume / long_avg_volume
 
-    confirmed_label = "CONFIRMED" if confirmed else "NOT CONFIRMED"
-
-    # =========================
-    # NEW: SIGNAL STRENGTH (0–10)
-    # =========================
-    strength = 0
-
-    # Trend strength
-    if vals["c_last"] > vals["ema20_last"] > vals["ema50_last"]:
-        strength += 2
-    elif vals["ema20_last"] > vals["ema50_last"]:
-        strength += 1
-
-    # RSI strength
-    if 35 <= vals["rsi_last"] <= 50:
-        strength += 2
-    elif 28 <= vals["rsi_last"] <= 70:
-        strength += 1
-
-    # Support strength
-    dist = abs(vals["c_last"] - support) / support
-    if dist <= 0.01:
-        strength += 2
-    elif dist <= 0.02:
-        strength += 1
-
-    # Volume strength
-    if vals["v_last"] > 1.3 * vals["vol_avg20"]:
-        strength += 2
-    elif vals["v_last"] > 1.1 * vals["vol_avg20"]:
-        strength += 1
-
-    # Candle strength
-    if bull_eng or is_hammer:
-        strength += 1
-
-    # Multi-timeframe alignment
-    if confirmed:
-        strength += 1
-
-    return {
-        "ticker": ticker,
-        "status": "OK",
-        "interval": interval,
-        "trend": trend,
-        "close": vals["c_last"],
-        "support": support,
-        "resistance": resistance,
-        "rsi": vals["rsi_last"],
-        "long_score": long_score,
-        "short_score": short_score,
-        "decision": decision,
-        "confirmed": confirmed_label,
-        "strength": strength,
-        "range_pos": round(vals["day_range_pos"] * 100, 1),
-    }
-
-
-# =========================
-# STREAMLIT UI
-# =========================
-
-def load_watchlist(path: str) -> pd.DataFrame:
-    if not os.path.exists(path):
-        st.error(f"Watchlist file not found: {path}")
-        return pd.DataFrame(columns=["Yahoo Ticker", "Company Name"])
-
-    df = pd.read_csv(path)
-    df["Yahoo Ticker"] = df["Yahoo Ticker"].astype(str).str.strip()
-    df["Company Name"] = df["Company Name"].astype(str).str.strip()
-
-    return df[["Yahoo Ticker", "Company Name"]]
-
-
-
-def decision_color(val: str) -> str:
-    if val == "BUY":
-        return "background-color:#2ECC71;color:black;"
-    elif val == "WAIT":
-        return "background-color:#F1C40F;color:black;"
-    elif val == "NO ENTER":
-        return "background-color:#E74C3C;color:white;"
-    return ""
-
-
-def confirmed_color(val: str) -> str:
-    if val == "CONFIRMED":
-        return "background-color:#27AE60;color:white;"
+    if current_price >= ma21_now:
+        downward_diagnosis = "RUNNING"
     else:
-        return "background-color:#AAB7B8;color:black;"
+        if current_price > ma200_now:
+            downward_diagnosis = "CORRECTION"
+        elif current_price <= ma200_now and volume_spike_ratio > 1.5 and short_change_pct and short_change_pct > 10.0:
+            downward_diagnosis = "STRUCTURAL_BLEED"
+        else:
+            downward_diagnosis = "MARKET_CRASH_OR_MACRO_FLUSH"
 
+    # Institutional Targets & Bank Consensus
+    target_low = info.get('targetLowPrice', 'N/A')
+    target_high = info.get('targetHighPrice', 'N/A')
+    target_mean = info.get('targetMeanPrice', 'N/A')
+    recommendation = info.get('recommendationKey', 'N/A').replace('_', ' ').title()
 
-def main():
-    st.set_page_config(page_title="Atharv Swing Scanner", layout="wide")
-    st.title("Atharv – Swing Trading Scanner (5m + 15m)")
+    # -----------------------------------------------------------------
+    # UI HEADER DISPLAY
+    # -----------------------------------------------------------------
+    st.header(f"🏢 {name}")
+    st.subheader(f"Sector: {sector} | Industry: {industry}")
 
-    watchlist_df = load_watchlist(WATCHLIST_PATH)
-    tickers = watchlist_df["Yahoo Ticker"].tolist()
-    st.write(f"Loaded **{len(tickers)}** tickers from watchlist.csv")
+    with st.expander("📄 View Company Profile Summary"):
+        st.write(summary)
 
-    intervals = ["5m", "15m"]
+    # -----------------------------------------------------------------
+    # ROW 1: LIVE TECHNICAL & FUNDAMENTAL MATRIX
+    # -----------------------------------------------------------------
+    st.write("---")
+    st.subheader("📊 Live Technical & Fundamental Matrix")
+    col1, col2, col3, col4 = st.columns(4)
 
-    if st.button("Run Scanner"):
-        for interval in intervals:
-            st.subheader(f"Interval: {interval}")
+    with col1:
+        st.metric("Current Price", f"${current_price:.2f}")
+        st.metric("Trailing P/E", f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else f"{pe_ratio}")
+    with col2:
+        st.metric("52-Week High", f"${fifty_two_high:.2f}")
+        st.metric("Forward P/E", f"{forward_pe:.2f}" if isinstance(forward_pe, (int, float)) else f"{forward_pe}")
+    with col3:
+        st.metric("Distance from High", f"-{pct_from_high:.1f}%")
+        st.metric("Volatility (Beta)", f"{beta:.2f}")
+    with col4:
+        if isinstance(market_cap, (int, float)):
+            st.metric("Market Cap", f"${market_cap / 1e9:.2f}B")
+        else:
+            st.metric("Market Cap", "N/A")
+        st.metric("Institutional Owned", f"{held_by_institutions:.1f}%")
 
-            rows = []
-            for _, row in watchlist_df.iterrows():
-                t = row["Yahoo Ticker"]
-                company_name = row["Company Name"]
-                res = analyze_ticker(t, interval)
+    # -----------------------------------------------------------------
+    # ROW 2: MARKET STRUCTURE & LIQUIDITY DYNAMICS
+    # -----------------------------------------------------------------
+    st.write("---")
+    st.subheader("💧 Market Structure & Liquidity Dynamics")
+    col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
 
-                if res["status"] != "OK":
-                    rows.append({
-                        "Ticker": t,
-                        "Company (Ticker)": f"{company_name} ({t})",
-                        "Decision": "NO ENTER",
-                        "Trend": "",
-                        "Close": "",
-                        "Support": "",
-                        "Resistance": "",
-                        "RSI": "",
-                        "LongScore": "",
-                        "ShortScore": "",
-                        "CONFIRMED": "",
-                        "RangePos%": "",
-                    })
+    with col_stat1:
+        st.markdown("**Supply Structure**")
+        if shares_outstanding:
+            st.metric("Shares Outstanding",
+                      f"{shares_outstanding / 1e9:.2f}B" if shares_outstanding >= 1e9 else f"{shares_outstanding / 1e6:.2f}M")
+        else:
+            st.metric("Shares Outstanding", "N/A")
+
+        if float_shares:
+            st.metric("Free Float",
+                      f"{float_shares / 1e9:.2f}B" if float_shares >= 1e9 else f"{float_shares / 1e6:.2f}M")
+        else:
+            st.metric("Free Float", "N/A")
+
+    with col_stat2:
+        st.markdown("**Ownership Dynamics**")
+        st.metric("Held by Institutions", f"{inst_pct:.2f}%")
+        st.metric("Held by Insiders", f"{insider_pct:.2f}%")
+
+    with col_stat3:
+        st.markdown("**Trading Liquidity**")
+        if avg_vol_3m:
+            st.metric("Avg Vol (3 Month)", f"{avg_vol_3m / 1e6:.2f}M")
+        else:
+            st.metric("Avg Vol (3 Month)", "N/A")
+
+        if daily_turnover_pct:
+            if 3.0 <= daily_turnover_pct <= 7.0:
+                st.metric("Daily Turnover %", f"{daily_turnover_pct:.2f}%", delta="🎯 Swing Sweet Spot",
+                          delta_color="normal")
+            elif daily_turnover_pct > 15.0:
+                st.metric("Daily Turnover %", f"{daily_turnover_pct:.2f}%", delta="⚠️ Hyper-Speculative",
+                          delta_color="inverse")
+            else:
+                st.metric("Daily Turnover %", f"{daily_turnover_pct:.2f}%")
+        else:
+            st.metric("Daily Turnover %", "N/A")
+
+    with col_stat4:
+        st.markdown("**Short Seller Pressure**")
+        if shares_short:
+            st.metric("Shares Short", f"{shares_short / 1e6:.2f}M")
+        else:
+            st.metric("Shares Short", "N/A")
+
+        st.metric("Short % of Float", f"{short_pct_float:.2f}%")
+        st.metric("Short Ratio (Days to Cover)", f"{short_ratio:.1f}" if short_ratio else "N/A")
+
+    # -----------------------------------------------------------------
+    # ROW 3: FINANCIAL HEALTH & MOMENTUM FILTERS
+    # -----------------------------------------------------------------
+    st.write("---")
+    st.subheader("🏥 Financial Health & Short Trajectory")
+    col_health1, col_health2, col_health3 = st.columns(3)
+
+    with col_health1:
+        st.markdown("**Core Profitability**")
+        if profit_margin:
+            if profit_margin >= 20.0:
+                st.metric("Net Profit Margin", f"{profit_margin:.2f}%", delta="🟢 Highly Profitable")
+            elif profit_margin < 0.0:
+                st.metric("Net Profit Margin", f"{profit_margin:.2f}%", delta="🔴 Burning Cash", delta_color="inverse")
+            else:
+                st.metric("Net Profit Margin", f"{profit_margin:.2f}%")
+        else:
+            st.metric("Net Profit Margin", "N/A")
+
+    with col_health2:
+        st.markdown("**Leverage Risk**")
+        if debt_to_equity is not None:
+            if debt_to_equity <= 100.0:
+                st.metric("Debt-to-Equity Ratio", f"{debt_to_equity:.1f}%", delta="🟢 Safe Leverage")
+            elif debt_to_equity > 200.0:
+                st.metric("Debt-to-Equity Ratio", f"{debt_to_equity:.1f}%", delta="⚠️ Heavy Debt Loading",
+                          delta_color="inverse")
+            else:
+                st.metric("Debt-to-Equity Ratio", f"{debt_to_equity:.1f}%")
+        else:
+            st.metric("Debt-to-Equity Ratio", "N/A / Cash Rich")
+
+    with col_health3:
+        st.markdown("**Short Interest Trajectory**")
+        if short_change_pct is not None:
+            if short_change_pct > 10.0:
+                st.metric("Shorts MoM Change", f"{short_change_pct:+.1f}%", delta="⚠️ Bears Accumulating",
+                          delta_color="inverse")
+            elif short_change_pct < -10.0:
+                st.metric("Shorts MoM Change", f"{short_change_pct:+.1f}%", delta="🟢 Bears Fleeing")
+            else:
+                st.metric("Shorts MoM Change", f"{short_change_pct:+.1f}% (Stable)")
+        else:
+            st.metric("Shorts MoM Change", "N/A")
+
+    # -----------------------------------------------------------------
+    # ROW 4: WALL STREET INSTITUTIONAL CONSENSUS FLOOR
+    # -----------------------------------------------------------------
+    st.write("---")
+    st.subheader("🏛️ Wall Street Institutional Consensus")
+    b_col1, b_col2, b_col3, b_col4 = st.columns(4)
+
+    with b_col1:
+        st.metric("Consensus Rating", f"{recommendation}")
+    with b_col2:
+        if isinstance(target_mean, (int, float)):
+            upside = ((target_mean - current_price) / current_price) * 100
+            st.metric("Average Target", f"${target_mean:.2f}", f"+{upside:.1f}% Est. Upside")
+        else:
+            st.metric("Average Target", "N/A")
+    with b_col3:
+        st.metric("Bank Low Target", f"${target_low:.2f}" if isinstance(target_low, (int, float)) else "N/A")
+    with b_col4:
+        st.metric("Bank High Target", f"${target_high:.2f}" if isinstance(target_high, (int, float)) else "N/A")
+
+    # -----------------------------------------------------------------
+    # ROW 5: INSTITUTIONAL TREND & DOWNTREND DIAGNOSER VIEW
+    # -----------------------------------------------------------------
+    st.write("---")
+    st.subheader("🎯 Institutional Trend & Downward Risk Diagnoser")
+    st.markdown("Tracks massive 1,000% runs while accurately diagnosing the exact structural nature of price drops.")
+
+    exit_col1, exit_col2, exit_col3 = st.columns(3)
+
+    with exit_col1:
+        st.markdown("**Institutional Launchpad Status**")
+        if current_price >= ma21_now:
+            st.metric("Launchpad Cushion", f"+{trend_cushion_pct:.1f}%", delta="💎 Strong Institutional Support")
+        else:
+            st.metric("Launchpad Cushion", f"{trend_cushion_pct:.1f}%", delta="⚠️ Below Launchpad Floor",
+                      delta_color="inverse")
+
+    with exit_col2:
+        st.markdown("**Core Technical Baselines**")
+        st.write(f"🔹 **21-Day Trend Floor:** ${ma21_now:.2f}")
+        st.write(f"🏛️ **200-Day Macro Floor:** ${ma200_now:.2f}")
+
+    with exit_col3:
+        st.markdown("**Strategic Execution & Trend Diagnosis**")
+
+        if downward_diagnosis == "RUNNING":
+            st.success(
+                "🚀 RIDE THE RUNNER: Trend is perfectly healthy. Let your profits compound into maximum potential.")
+
+        elif downward_diagnosis == "CORRECTION":
+            st.warning(
+                "🟡 HEALTHY CORRECTION: Price is dipping but remains safely above the 200-Day Macro Floor. No structural damage detected. Safe to hold or accumulate pullbacks.")
+
+        elif downward_diagnosis == "MARKET_CRASH_OR_MACRO_FLUSH":
+            st.info(
+                "🌊 MACRO FLUSH / CRASH SECTOR: Stock is below major floors but lacking heavy volume liquidation or short spikes. Likely dragged down by broader market panic. Hold firm through systemic volatility.")
+
+        elif downward_diagnosis == "STRUCTURAL_BLEED":
+            st.error(
+                "🚨 STRUCTURAL DOWNWARD TREND: Asset has completely broken down below the 200-Day Floor on high institutional volume and rising short interest. Expect a multi-month negative freeze. DO NOT add fresh capital here.")
+
+    # -----------------------------------------------------------------
+    # NEW BLOCK: 🎯 TAILORED POSITION EXECUTION CHECKLIST (USER LIST REQUIREMENT)
+    # -----------------------------------------------------------------
+    if my_purchase_price > 0.0:
+        st.write("---")
+        st.subheader(f"📋 Personalized Execution Checklist for {ticker_input}")
+        st.markdown(
+            "Your custom, live-calculated action plan based on your average cost and current institutional trend structures.")
+
+        # Calculate individual performance metrics
+        gain_loss_pct = ((current_price - my_purchase_price) / my_purchase_price) * 100
+        in_the_green = current_price >= my_purchase_price
+
+        list_col1, list_col2 = st.columns([1, 2])
+
+        with list_col1:
+            st.markdown("**Your Equity Status Metrics**")
+            st.metric("Your Cost Basis", f"${my_purchase_price:.2f}")
+            if in_the_green:
+                st.metric("Position Return", f"+{gain_loss_pct:.2f}%", delta="🟢 In The Green")
+            else:
+                st.metric("Position Return", f"{gain_loss_pct:.2f}%", delta="🔴 Capital In Drawdown",
+                          delta_color="inverse")
+
+        with list_col2:
+            st.markdown("**What To Do Right Now (Action List):**")
+
+            # Generate personalized lists dynamically based on technical frameworks + user price
+            if downward_diagnosis == "RUNNING":
+                if in_the_green:
+                    st.markdown(f"""
+                    * **[HOLD]** Your position is safely in the green (`+{gain_loss_pct:.1f}%`) and institutional momentum is roaring. Do not sell early.
+                    * **[TRAILING TRACK]** Your profit floor is protected by the 21-Day Trend Floor at **${ma21_now:.2f}**. Let the asset climb uncapped.
+                    * **[EXECUTION]** Take no profit reduction until the price closes below the 21-day floor line.
+                    """)
                 else:
-                    rows.append({
-                        "Ticker": res["ticker"],
-                        "Company (Ticker)": f"{company_name} ({res['ticker']})",
-                        "Decision": res["decision"],
-                        "Trend": res["trend"],
-                        "Close": round(res["close"], 2),
-                        "Support": round(res["support"], 2),
-                        "Resistance": round(res["resistance"], 2),
-                        "RSI": round(res["rsi"], 1),
-                        "LongScore": res["long_score"],
-                        "ShortScore": res["short_score"],
-                        "CONFIRMED": res["confirmed"],
-                        "Strength": res["strength"],
-                        "RangePos%": res["range_pos"],
-                    })
+                    st.markdown(f"""
+                    * **[HOLD / WATCH]** You are down ` {gain_loss_pct:.1f}%` from your entry, but the asset has flipped into a fresh **Institutional Launchpad Run**. 
+                    * **[BUY ALIGNMENT]** The trend has reversed positively. Because it crossed above **${ma21_now:.2f}**, the structural path to your break-even point is wide open.
+                    * **[EXECUTION]** Hold firm. No panic-selling allowed while institutions are actively backing the move.
+                    """)
 
-            df_res = pd.DataFrame(rows)
+            elif downward_diagnosis == "CORRECTION":
+                if in_the_green:
+                    st.markdown(f"""
+                    * **[PROTECT / HOLD]** You are up `+{gain_loss_pct:.1f}%`, but the stock is undergoing a short-term pullback below its 21-day line.
+                    * **[SAFETY MATRIX]** The long-term floor at **${ma200_now:.2f}** is still completely intact. This is a healthy correction.
+                    * **[EXECUTION]** If you want to lock in your profits tightly, use **${ma21_now:.2f}** as your soft exit line. Otherwise, hold safely through the temporary dip.
+                    """)
+                else:
+                    st.markdown(f"""
+                    * **[HOLD & ACCUMULATE]** You are down `{gain_loss_pct:.1f}%` on this share, but it is diagnosed as a **Healthy Technical Correction**.
+                    * **[SUPPORT CHECK]** The asset is breathing but tracking safely above the long-term macro floor (**${ma200_now:.2f}**).
+                    * **[EXECUTION]** Do not sell at a loss. If your corporate cash allocation rules allow, this is a mathematically safe area to add shares and average down your entry cost.
+                    """)
 
-            df_res["DecisionRank"] = df_res["Decision"].map({
-                "BUY": 0,
-                "WAIT": 1,
-                "NO ENTER": 2
-            }).fillna(3)
+            elif downward_diagnosis == "MARKET_CRASH_OR_MACRO_FLUSH":
+                st.markdown(f"""
+                * **[STRICT FREEZE & HOLD]** This asset is down due to a broad macro sector sweep or global market panic. 
+                * **[PHILOSOPHY COMPLIANCE]** Your capital is currently at a `{gain_loss_pct:.1f}%` paper variance. Remember your rule: **Never sell at a loss.**
+                * **[EXECUTION]** Freeze the position entirely. Broader market flushes are temporary liquidations. Let the family-managed account carry the position safely as an investment without crystalizing an emotional loss.
+                """)
 
-            df_res["ConfirmedRank"] = df_res["CONFIRMED"].map({
-                "CONFIRMED": 0,
-                "NOT CONFIRMED": 1
-            }).fillna(2)
+            elif downward_diagnosis == "STRUCTURAL_BLEED":
+                st.markdown(f"""
+                * **[LOCK capital / DO NOT ADD]** This share has broken major technical benchmarks (**${ma200_now:.2f}**) on heavy institutional distribution volume. 
+                * **[RISK WARNING]** You are currently down `{gain_loss_pct:.1f}%`. The stock is entering a prolonged negative multi-month cooling cycle.
+                * **[EXECUTION]** **DO NOT throw good money after bad.** Absolutely do not average down here. Put a capital freeze on this ticker, let the existing shares sit untouched, and re-allocate your fresh corporate capital toward active green runners instead.
+                """)
 
-            # Sort: BUY first, then WAIT, then NO ENTER
-            order = {"BUY": 0, "WAIT": 1, "NO ENTER": 2}
-            df_res["Rank"] = df_res["Decision"].map(order).fillna(3)
-            df_res = df_res.sort_values(
-                ["DecisionRank", "ConfirmedRank", "Strength", "LongScore"],
-                ascending=[True, True, False, False]
-            ).drop(columns=["DecisionRank", "ConfirmedRank"])
+    # -----------------------------------------------------------------
+    # ROW 6: ANALYSIS COLUMNS (Algorithm & AI Catalyst Deep Dive)
+    # -----------------------------------------------------------------
+    st.write("---")
+    left_col, right_col = st.columns(2)
 
-            # Style decision + confirmed columns
-            styled = df_res.style.apply(
-                lambda col: [decision_color(v) for v in col],
-                subset=["Decision"]
-            ).apply(
-                lambda col: [confirmed_color(v) for v in col],
-                subset=["CONFIRMED"]
-            )
+    with left_col:
+        st.subheader("⚙️ Automated Algorithmic Logic")
 
-            st.dataframe(styled, use_container_width=True)
+        # Short Term Trend Card
+        st.markdown("**Short-Term Swing Direction:**")
+        if current_price > ma50_now and ma50_now > ma200_now:
+            st.success("🟢 Strong Upward Momentum. Structural trend is healthy; target pullbacks for entry.")
+        elif current_price < ma50_now and current_price > ma200_now:
+            st.warning(
+                "🟡 Technical Correction. Price retreating toward the 200-day floor. Monitor for reversal support.")
+        else:
+            st.error("🔴 Bearish Structural Trend. High capital vulnerability for immediate swing trades.")
 
+        # Long Term Value Card
+        st.markdown("**1-2 Year Structural Outlook:**")
+        if isinstance(forward_pe, (int, float)) and isinstance(pe_ratio, (int, float)):
+            if forward_pe < pe_ratio:
+                st.info(
+                    "🔵 Positive. Earnings projections expand outward, indicating long-term valuation discount room.")
+            else:
+                st.markdown("⚪ *Premium/Flat. Growth trajectories appear valued-in by core institutional analysts.*")
+        else:
+            st.markdown("⚪ *Data insufficient to safely cross-verify corporate forwarding horizons.*")
 
-if __name__ == "__main__":
-    main()
+        # Liquidity Check
+        st.markdown("**Capital Exit Liquidity:**")
+        if avg_volume > 1000000:
+            st.success(f"✅ Safe ({avg_volume:,} avg shares/day). Swift exit execution available.")
+        elif avg_volume > 200000:
+            st.warning(f"⚠️ Moderate ({avg_volume:,} avg shares/day). Handle under controlled size allocation.")
+        else:
+            st.error(f"🚨 Extreme Liquidity Risk ({avg_volume:,} shares). High probability of slippage parameters.")
+
+    with right_col:
+        st.subheader("📰 Live Catalyst Feed & AI Deep Dive")
+
+        if not client:
+            st.warning(
+                "⚠️ Enter a valid Gemini API Key at the top of the file to populate the AI sentiment breakdown below.")
+        else:
+            with st.spinner("Activating Google Search Grounding to fetch live market catalysts..."):
+                prompt = f"""
+                Perform a live regulatory and sentiment risk assessment for the ticker asset: {ticker_input} ({name}).
+
+                1. Identify the top 3-4 major news headlines, product announcements, or earnings catalysts from the past 72 hours.
+                2. Evaluate if these events represent short-term volatility plays (swings) or changing structural fundamentals for holding 1-2 years. 
+                3. Explicitly state any immediate hazards to corporate capital reserves or cash liquidity parameters.
+
+                Format your final response with clean, professional bold headers. Provide direct bullet points for the news events.
+                """
+
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            tools=[{"google_search": {}}]
+                        )
+                    )
+                    st.markdown("#### 🤖 Automated AI Intelligence Report")
+                    st.info(response.text)
+
+                except Exception as ai_err:
+                    st.error(f"AI Synthesis module failed to execute: {ai_err}")
