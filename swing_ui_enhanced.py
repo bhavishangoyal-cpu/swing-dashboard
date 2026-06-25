@@ -792,8 +792,8 @@ with tab4:
     st.write("---")
 
     # Securely pull your free Gemini API Key
-    API_KEY_S4 = "AQ.Ab8RN6J3k0y2pU_MK_PsjfQmrDGqaw5jvXRLHRpBeofM5ecx6g"
-    client_s4 = s4_get_ai_client(API_KEY_S4)
+    # Call the function with empty parentheses. It pulls from Secrets automatically now!
+    client_s4 = s4_get_ai_client()
 
     # Layout: Split into sidebar inputs or direct columns inside the tab to avoid clashing with global sidebars
     t_col1, t_col2 = st.columns([1, 2])
