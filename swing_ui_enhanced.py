@@ -4,11 +4,17 @@ import numpy as np
 import yfinance as yf
 import os
 
+import streamlit as st
+
 st.set_page_config(page_title="Master Trading Suite", layout="wide")
 st.title("🎛️ Master Strategy & Scanning Interface")
 
-tab1, tab2, tab3 = st.tabs(
-    ["🎯 Atharv Swing Scanner (5m/15m)", "📈 Goel's Swing Strategy", "📊 52-Week High/Low Strategy"])
+# Create your global tabs here
+tab1, tab2, tab3 = st.tabs([
+    "🎯 Atharv Swing Scanner (5m/15m)",
+    "📈 Goel's Swing Strategy",
+    "📊 52-Week High/Low Strategy"
+])
 
 # =========================
 # CONFIG
@@ -22,7 +28,9 @@ REQUIRED_COLS = {"Open", "High", "Low", "Close", "Volume"}
 # =========================
 # INDICATORS
 # =========================
-tab1
+with tab1:
+    st.header("Atharv Swing Trading Scanner")
+
 def rsi(series: pd.Series, period: int = 14) -> pd.Series:
     series = series.astype(float)
     delta = series.diff()
@@ -405,7 +413,8 @@ if __name__ == "__main__":
 
 
 #STRATEGY-2
-tab2
+with tab2:
+    st.header("📈 Goel's Swing Strategy")
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -1044,7 +1053,8 @@ else:
 
 #STRATEGY-3
 # ================== 52-WEEK DROP ANALYZER ==================
-tab3
+with tab3:
+    st.header("📊 52-Week High/Low Strategy")
 
 st.divider()
 st.title("📉 52-Week High Drop Analyzer")
