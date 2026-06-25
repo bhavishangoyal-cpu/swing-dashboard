@@ -13,13 +13,12 @@ import streamlit as st
 from google import genai
 
 @st.cache_resource
-def s4_get_ai_client():
-    # Automatically pulls from Streamlit secrets or OS environment variables natively
+@st.cache_resource
+def s4_get_ai_client(): # <-- Ensure NO arguments are inside the brackets here
     api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if api_key:
         try:
-            # DO NOT pass api_key=api_key directly for AQ. keys;
-            # instead, set the environment variable explicitly so the SDK handles it natively
+            # Forcing the key to the OS environment allows the SDK to structure headers correctly
             os.environ["GEMINI_API_KEY"] = api_key
             return genai.Client()
         except Exception:
