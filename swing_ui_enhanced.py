@@ -13,12 +13,12 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="Master Trading Suite", layout="wide")
 st.title("🎛️ Master Strategy & Scanning Interface")
 
-# Setup Global Navigation Tabs
+# Setup Global Navigation Tabs (Now with Tab 4)
 tab1, tab2, tab3, tab4 = st.tabs([
     "🎯 Atharv Swing Scanner (5m/15m)",
     "📈 Goel's Swing Strategy",
     "📊 52-Week High/Low Strategy",
-    "⚡ Enhanced Scanner"
+    "⚡ Atharv Enhanced Scanner"
 ])
 
 WATCHLIST_PATH = "watchlist.csv"
@@ -31,7 +31,6 @@ REQUIRED_COLS = {"Open", "High", "Low", "Close", "Volume"}
 def shared_load_watchlist(path: str = WATCHLIST_PATH) -> pd.DataFrame:
     """Unified CSV Watchlist Loader used by all strategies"""
     if not os.path.exists(path):
-        # Create an empty sample if it doesn't exist
         df = pd.DataFrame(columns=["Yahoo Ticker", "Company Name"])
         df.to_csv(path, index=False)
         return df
@@ -100,8 +99,6 @@ def s1_get_last_values(df: pd.DataFrame):
         "c_prev": float(df["Close"].iloc[-2]), "ema20_last": float(df["EMA20"].iloc[-1]),
         "ema50_last": float(df["EMA50"].iloc[-1]), "rsi_last": float(df["RSI14"].iloc[-1]),
         "rsi_prev": float(df["RSI14"].iloc[-2]), "vol_avg20": float(df["VolAvg20"].iloc[-1]),
-        # NEW PROPERTY ADDED HERE:
-        "day_range_pos": (float(df["Close"].iloc[-1]) - float(df["Low"].iloc[-1])) / (float(df["High"].iloc[-1]) - float(df["Low"].iloc[-1]) + 1e-9),
     }
 
 
@@ -147,20 +144,11 @@ def s1_analyze_ticker(ticker: str, interval: str) -> dict:
     rng = vals["h_last"] - vals["l_last"]
     is_hammer = (rng > 0) and ((min(vals["o_last"], vals["c_last"]) - vals["l_last"]) > 2 * body) and (body / rng < 0.4)
 
-    # Stricter volume criteria updated to 1.5
     vol_ok = (not np.isnan(vals["vol_avg20"])) and (vals["vol_avg20"] > 0) and (
-                vals["v_last"] > 1.5 * vals["vol_avg20"])
+                vals["v_last"] > 1.1 * vals["vol_avg20"])
 
-    # Long Score with new Top 25% Day Range Position feature
-    long_score = sum([
-        trend == "UP",
-        near_support,
-        (28 <= vals["rsi_last"] <= 70) and rsi_up,
-        bull_eng or is_hammer,
-        vol_ok,
-        vals["day_range_pos"] >= 0.75
-    ])
-
+    long_score = sum(
+        [trend == "UP", near_support, (28 <= vals["rsi_last"] <= 55) and rsi_up, bull_eng or is_hammer, vol_ok])
     short_score = sum([trend == "DOWN", near_resistance, (55 <= vals["rsi_last"] <= 75) and rsi_down, bear_eng, vol_ok])
 
     if long_score >= 4:
@@ -173,7 +161,7 @@ def s1_analyze_ticker(ticker: str, interval: str) -> dict:
         decision = "NO ENTER"
 
     confirmed = (decision == "BUY") and (trend == "UP") and (long_score >= 3) and (
-                28 <= vals["rsi_last"] <= 70) and near_support and vol_ok
+                28 <= vals["rsi_last"] <= 55) and near_support and vol_ok
     confirmed_label = "CONFIRMED" if confirmed else "NOT CONFIRMED"
 
     strength = 0
@@ -183,7 +171,7 @@ def s1_analyze_ticker(ticker: str, interval: str) -> dict:
         strength += 1
     if 35 <= vals["rsi_last"] <= 50:
         strength += 2
-    elif 28 <= vals["rsi_last"] <= 70:
+    elif 28 <= vals["rsi_last"] <= 55:
         strength += 1
 
     if support > 0:
@@ -206,8 +194,8 @@ def s1_analyze_ticker(ticker: str, interval: str) -> dict:
         "ticker": ticker, "status": "OK", "interval": interval, "trend": trend, "close": vals["c_last"],
         "support": support, "resistance": resistance, "rsi": vals["rsi_last"], "long_score": long_score,
         "short_score": short_score, "decision": decision, "confirmed": confirmed_label, "strength": strength,
-        "range_pos": round(vals["day_range_pos"] * 100, 1),  # Added parameter track back
     }
+
 
 def s1_decision_color(val: str) -> str:
     if val == "BUY":
@@ -400,24 +388,38 @@ def s3_download_single_ticker(ticker: str):
 
 
 # ==============================================================================
-# 6. STRATEGY 4: ATHARV ENHANCED SCANNER UTILITIES
+# 6. STRATEGY 4: ATHARV ENHANCED SCANNER UTILITIES (Your exact functions mapped)
 # ==============================================================================
 def s4_get_last_values(df: pd.DataFrame):
     return {
-        "o_last": float(df["Open"].iloc[-1]), "h_last": float(df["High"].iloc[-1]),
-        "l_last": float(df["Low"].iloc[-1]), "c_last": float(df["Close"].iloc[-1]),
-        "v_last": float(df["Volume"].iloc[-1]), "o_prev": float(df["Open"].iloc[-2]),
-        "h_prev": float(df["High"].iloc[-2]), "l_prev": float(df["Low"].iloc[-2]),
-        "c_prev": float(df["Close"].iloc[-2]), "ema20_last": float(df["EMA20"].iloc[-1]),
-        "ema50_last": float(df["EMA50"].iloc[-1]), "rsi_last": float(df["RSI14"].iloc[-1]),
-        "rsi_prev": float(df["RSI14"].iloc[-2]), "vol_avg20": float(df["VolAvg20"].iloc[-1]),
+        "o_last": float(df["Open"].iloc[-1]),
+        "h_last": float(df["High"].iloc[-1]),
+        "l_last": float(df["Low"].iloc[-1]),
+        "c_last": float(df["Close"].iloc[-1]),
+        "v_last": float(df["Volume"].iloc[-1]),
+        "o_prev": float(df["Open"].iloc[-2]),
+        "h_prev": float(df["High"].iloc[-2]),
+        "l_prev": float(df["Low"].iloc[-2]),
+        "c_prev": float(df["Close"].iloc[-2]),
+        "ema20_last": float(df["EMA20"].iloc[-1]),
+        "ema50_last": float(df["EMA50"].iloc[-1]),
+        "rsi_last": float(df["RSI14"].iloc[-1]),
+        "rsi_prev": float(df["RSI14"].iloc[-2]),
+        "vol_avg20": float(df["VolAvg20"].iloc[-1]),
         "day_range_pos": (float(df["Close"].iloc[-1]) - float(df["Low"].iloc[-1])) / (
                     float(df["High"].iloc[-1]) - float(df["Low"].iloc[-1]) + 1e-9),
     }
 
 
+def s4_detect_support_resistance(df: pd.DataFrame, lookback: int = 40):
+    recent = df.tail(lookback)
+    support = recent['Low'].rolling(5).min().iloc[-1]
+    resistance = recent['High'].rolling(5).max().iloc[-1]
+    return support, resistance
+
+
 def s4_analyze_ticker(ticker: str, interval: str) -> dict:
-    data = s1_safe_history(ticker, interval=interval, period="7d")  # Safely reuses shared loader logic
+    data = s1_safe_history(ticker, interval=interval, period="7d")
     if data is None or len(data) < 60:
         return {"ticker": ticker, "status": "NO_DATA", "interval": interval}
 
@@ -426,11 +428,10 @@ def s4_analyze_ticker(ticker: str, interval: str) -> dict:
         return {"ticker": ticker, "status": "NO_DATA", "interval": interval}
 
     vals = s4_get_last_values(df)
+
     trend = "UP" if (vals["c_last"] > vals["ema20_last"] > vals["ema50_last"]) else "DOWN"
 
-    recent = df.tail(40)
-    support = recent['Low'].rolling(5).min().iloc[-1]
-    resistance = recent['High'].rolling(5).max().iloc[-1]
+    support, resistance = s4_detect_support_resistance(df)
 
     near_support = (support > 0) and (abs(vals["c_last"] - support) / support <= 0.02)
     near_resistance = (resistance > 0) and (abs(vals["c_last"] - resistance) / resistance <= 0.02)
@@ -451,12 +452,21 @@ def s4_analyze_ticker(ticker: str, interval: str) -> dict:
                 vals["v_last"] > 1.5 * vals["vol_avg20"])
 
     long_score = sum([
-        trend == "UP", near_support,
+        trend == "UP",
+        near_support,
         (28 <= vals["rsi_last"] <= 70) and rsi_up,
-        bull_eng or is_hammer, vol_ok,
-        vals["day_range_pos"] >= 0.75
+        bull_eng or is_hammer,
+        vol_ok,
+        vals["day_range_pos"] >= 0.75,
     ])
-    short_score = sum([trend == "DOWN", near_resistance, (55 <= vals["rsi_last"] <= 75) and rsi_down, bear_eng, vol_ok])
+
+    short_score = sum([
+        trend == "DOWN",
+        near_resistance,
+        (55 <= vals["rsi_last"] <= 75) and rsi_down,
+        bear_eng,
+        vol_ok,
+    ])
 
     if long_score >= 4:
         decision = "BUY"
@@ -467,8 +477,15 @@ def s4_analyze_ticker(ticker: str, interval: str) -> dict:
     else:
         decision = "NO ENTER"
 
-    confirmed = (decision == "BUY") and (trend == "UP") and (long_score >= 3) and (
-                28 <= vals["rsi_last"] <= 70) and near_support and vol_ok
+    confirmed = (
+            (decision == "BUY") and
+            (trend == "UP") and
+            (long_score >= 3) and
+            (28 <= vals["rsi_last"] <= 70) and
+            near_support and
+            (vals["v_last"] > 1.5 * vals["vol_avg20"])
+    )
+
     confirmed_label = "CONFIRMED" if confirmed else "NOT CONFIRMED"
 
     strength = 0
@@ -476,37 +493,47 @@ def s4_analyze_ticker(ticker: str, interval: str) -> dict:
         strength += 2
     elif vals["ema20_last"] > vals["ema50_last"]:
         strength += 1
+
     if 35 <= vals["rsi_last"] <= 50:
         strength += 2
     elif 28 <= vals["rsi_last"] <= 70:
         strength += 1
 
-    if support > 0:
-        dist = abs(vals["c_last"] - support) / support
-        if dist <= 0.01:
-            strength += 2
-        elif dist <= 0.02:
-            strength += 1
+    dist = abs(vals["c_last"] - support) / support
+    if dist <= 0.01:
+        strength += 2
+    elif dist <= 0.02:
+        strength += 1
 
-    if (not np.isnan(vals["vol_avg20"])) and vals["vol_avg20"] > 0:
-        if vals["v_last"] > 1.3 * vals["vol_avg20"]:
-            strength += 2
-        elif vals["v_last"] > 1.1 * vals["vol_avg20"]:
-            strength += 1
+    if vals["v_last"] > 1.3 * vals["vol_avg20"]:
+        strength += 2
+    elif vals["v_last"] > 1.1 * vals["vol_avg20"]:
+        strength += 1
 
     if bull_eng or is_hammer: strength += 1
     if confirmed: strength += 1
 
     return {
-        "ticker": ticker, "status": "OK", "interval": interval, "trend": trend, "close": vals["c_last"],
-        "support": support, "resistance": resistance, "rsi": vals["rsi_last"], "long_score": long_score,
-        "short_score": short_score, "decision": decision, "confirmed": confirmed_label, "strength": strength,
+        "ticker": ticker,
+        "status": "OK",
+        "interval": interval,
+        "trend": trend,
+        "close": vals["c_last"],
+        "support": support,
+        "resistance": resistance,
+        "rsi": vals["rsi_last"],
+        "long_score": long_score,
+        "short_score": short_score,
+        "decision": decision,
+        "confirmed": confirmed_label,
+        "strength": strength,
         "range_pos": round(vals["day_range_pos"] * 100, 1),
     }
 
+
 # ==============================================================================
 # ==============================================================================
-# TAB EXECUTION BLOCKS (Saves components inside isolated spaces)
+# TAB EXECUTION BLOCKS
 # ==============================================================================
 # ==============================================================================
 
@@ -567,14 +594,11 @@ with tab1:
 # ==============================================================================
 with tab2:
     st.header("📈 Goel's Swing Strategy Engine")
-
-    # Auto-refresh context bound exclusively to Tab 2
     st_autorefresh(interval=180000, key="refresh_goel_tab")
 
     s2_watchlist = shared_load_watchlist()["Yahoo Ticker"].tolist()
     ticker_to_name = dict(zip(shared_load_watchlist()["Yahoo Ticker"], shared_load_watchlist()["Company Name"]))
 
-    # Market Health Header
     st.markdown("### Market Environmental Conditions")
     col1, col2 = st.columns(2)
     with col1:
@@ -592,7 +616,6 @@ with tab2:
 
     st.markdown("---")
 
-    # Inline Entry System
     col_add_1, col_add_2 = st.columns([4, 1])
     with col_add_1:
         new_ticker = st.text_input("Enter ticker to add to master engine list:", "", key="txt_add_goel").upper().strip()
@@ -604,7 +627,6 @@ with tab2:
                 st.success(f"Added {new_ticker}!")
                 st.rerun()
 
-    # Calculation loop
     if s2_watchlist:
         st.info(f"Analyzing metrics for {len(s2_watchlist)} tracked parameters...")
         results_s2 = []
@@ -645,7 +667,6 @@ with tab2:
         df_results_s2['Score'] = df_results_s2.apply(s2_score_signal, axis=1)
         df_results_s2['Rating'] = df_results_s2['Score'].apply(s2_rating_from_score)
 
-        # Filters
         strong_df = df_results_s2[df_results_s2['Enhanced Signal'].str.contains('STRONG BUY', na=False)].sort_values(
             'Score', ascending=False)
         potential_df = df_results_s2[
@@ -741,20 +762,21 @@ with tab3:
                         st.dataframe(render_df, use_container_width=True)
 
 # ==============================================================================
-# ⚡ TAB 4: ATHARV ENHANCED SCANNER
+# ⚡ TAB 4: ATHARV ENHANCED SCANNER (Your exact code UI logic mapped cleanly)
 # ==============================================================================
 with tab4:
-    st.header("⚡ Atharv Enhanced Swing Scanner (Day Range Pos Filters)")
+    st.header("Atharv – Enhanced Swing Trading Scanner (5m + 15m)")
 
     watchlist_df_s4 = shared_load_watchlist()
     tickers_s4 = watchlist_df_s4["Yahoo Ticker"].tolist()
-    st.write(f"Loaded **{len(tickers_s4)}** tickers from internal configuration repository.")
+    st.write(f"Loaded **{len(tickers_s4)}** tickers from watchlist.csv")
 
     intervals_s4 = ["5m", "15m"]
 
     if st.button("Run Enhanced Scanner", key="btn_run_atharv_enhanced_scanner"):
         for interval in intervals_s4:
-            st.subheader(f"Interval Target: {interval}")
+            st.subheader(f"Interval: {interval}")
+
             rows_s4 = []
             for _, row in watchlist_df_s4.iterrows():
                 t = row["Yahoo Ticker"]
@@ -763,32 +785,62 @@ with tab4:
 
                 if res["status"] != "OK":
                     rows_s4.append({
-                        "Ticker": t, "Company (Ticker)": f"{company_name} ({t})", "Decision": "NO ENTER",
-                        "Trend": "", "Close": "", "Support": "", "Resistance": "", "RSI": "",
-                        "LongScore": "", "ShortScore": "", "CONFIRMED": "", "Strength": 0, "RangePos%": ""
+                        "Ticker": t,
+                        "Company (Ticker)": f"{company_name} ({t})",
+                        "Decision": "NO ENTER",
+                        "Trend": "",
+                        "Close": "",
+                        "Support": "",
+                        "Resistance": "",
+                        "RSI": "",
+                        "LongScore": "",
+                        "ShortScore": "",
+                        "CONFIRMED": "",
+                        "RangePos%": "",
                     })
                 else:
                     rows_s4.append({
-                        "Ticker": res["ticker"], "Company (Ticker)": f"{company_name} ({res['ticker']})",
-                        "Decision": res["decision"], "Trend": res["trend"], "Close": round(res["close"], 2),
-                        "Support": round(res["support"], 2), "Resistance": round(res["resistance"], 2),
-                        "RSI": round(res["rsi"], 1), "LongScore": res["long_score"],
-                        "ShortScore": res["short_score"], "CONFIRMED": res["confirmed"], "Strength": res["strength"],
-                        "RangePos%": res["range_pos"]
+                        "Ticker": res["ticker"],
+                        "Company (Ticker)": f"{company_name} ({res['ticker']})",
+                        "Decision": res["decision"],
+                        "Trend": res["trend"],
+                        "Close": round(res["close"], 2),
+                        "Support": round(res["support"], 2),
+                        "Resistance": round(res["resistance"], 2),
+                        "RSI": round(res["rsi"], 1),
+                        "LongScore": res["long_score"],
+                        "ShortScore": res["short_score"],
+                        "CONFIRMED": res["confirmed"],
+                        "Strength": res["strength"],
+                        "RangePos%": res["range_pos"],
                     })
 
             df_res_s4 = pd.DataFrame(rows_s4)
-            df_res_s4["Rank"] = df_res_s4["Decision"].map({"BUY": 0, "WAIT": 1, "NO ENTER": 2}).fillna(3)
-            df_res_s4["ConfRank"] = df_res_s4["CONFIRMED"].map({"CONFIRMED": 0, "NOT CONFIRMED": 1}).fillna(2)
 
+            df_res_s4["DecisionRank"] = df_res_s4["Decision"].map({
+                "BUY": 0,
+                "WAIT": 1,
+                "NO ENTER": 2
+            }).fillna(3)
+
+            df_res_s4["ConfirmedRank"] = df_res_s4["CONFIRMED"].map({
+                "CONFIRMED": 0,
+                "NOT CONFIRMED": 1
+            }).fillna(2)
+
+            order_s4 = {"BUY": 0, "WAIT": 1, "NO ENTER": 2}
+            df_res_s4["Rank"] = df_res_s4["Decision"].map(order_s4).fillna(3)
             df_res_s4 = df_res_s4.sort_values(
-                ["Rank", "ConfRank", "Strength", "LongScore"],
+                ["DecisionRank", "ConfirmedRank", "Strength", "LongScore"],
                 ascending=[True, True, False, False]
-            ).drop(columns=["Rank", "ConfRank"])
+            ).drop(columns=["DecisionRank", "ConfirmedRank"])
 
             styled_s4 = df_res_s4.style.apply(
-                lambda col: [s1_decision_color(v) for v in col], subset=["Decision"]
+                lambda col: [s1_decision_color(v) for v in col],
+                subset=["Decision"]
             ).apply(
-                lambda col: [s1_confirmed_color(v) for v in col], subset=["CONFIRMED"]
+                lambda col: [s1_confirmed_color(v) for v in col],
+                subset=["CONFIRMED"]
             )
+
             st.dataframe(styled_s4, use_container_width=True)
