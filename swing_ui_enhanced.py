@@ -8,12 +8,20 @@ from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 from google import genai
 from google.genai import types
+import os
+import streamlit as st
+from google import genai
 
 @st.cache_resource
-def s4_get_ai_client(api_key: str):
-    if api_key and api_key != "YOUR_FREE_GEMINI_API_KEY":
+def s4_get_ai_client():
+    # Automatically pulls from Streamlit secrets or OS environment variables natively
+    api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    if api_key:
         try:
-            return genai.Client(api_key=api_key)
+            # DO NOT pass api_key=api_key directly for AQ. keys;
+            # instead, set the environment variable explicitly so the SDK handles it natively
+            os.environ["GEMINI_API_KEY"] = api_key
+            return genai.Client()
         except Exception:
             return None
     return None
