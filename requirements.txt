@@ -6,3 +6,4 @@ pandas
 plotly
 streamlit-autorefresh
 google-genai
+plotly

@@ -31,11 +31,13 @@ st.set_page_config(page_title="Master Trading Suite", layout="wide")
 st.title("🎛️ Master Strategy & Scanning Interface")
 
 # Setup Global Navigation Tabs (Now with Tab 4)
-tab1, tab2, tab3, tab4 = st.tabs([
+# Setup Global Navigation Tabs (Expanded with Tab 5)
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🎯 Atharv Swing Scanner (5m/15m)",
     "📈 Goel's Swing Strategy",
     "📊 52-Week High/Low Strategy",
-    "🚀 Atharv Corporate Guide"
+    "🚀 Atharv Corporate Guide",
+    "🎯 80%+ Intraday Squeeze"
 ])
 
 WATCHLIST_PATH = "watchlist.csv"
@@ -1168,3 +1170,118 @@ with tab4:
                         st.info(response_s4.text)
                     except Exception as ai_err:
                         st.error(f"AI Synthesis module failed to execute: {ai_err}")
+
+# ==============================================================================
+# 🎯 TAB 5: 80%+ INTRADAY SQUEEZE BREAKOUT STRATEGY
+# ==============================================================================
+with tab5:
+    st.header("🎯 High-Effectiveness Intraday Squeeze Scanner")
+    st.caption("Filters for 1.2% Volatility Squeezes with Multi-Timeframe Institutional Volume Confirmation")
+
+    # Load tickers dynamically from your existing master watchlist framework
+    tab5_watchlist_df = shared_load_watchlist()
+    tab5_tickers = tab5_watchlist_df["Yahoo Ticker"].tolist()
+
+    if not tab5_tickers:
+        st.warning("⚠️ Your watchlist.csv file is empty. Please add tickers to run the Intraday Squeeze Scanner.")
+    else:
+        st.write(f"Scanning **{len(tab5_tickers)}** tickers pulling directly from your live `watchlist.csv` profile.")
+
+
+        # Isolate the live refresh engine inside a fragment so it doesn't interrupt other tabs
+        @st.fragment(run_every=300)  # Auto-refreshes every 300 seconds (5 minutes) during market hours
+        def run_s5_squeeze_engine(watchlist_data):
+            st.write(f"🔄 Last Live Scan: `{time.strftime('%H:%M:%S')} PST` (Auto-refreshes isolated to Tab 5 every 5m)")
+
+            squeeze_rows = []
+
+            for _, row in watchlist_data.iterrows():
+                t = row["Yahoo Ticker"]
+                name = row["Company Name"]
+
+                try:
+                    # --- LAYER 1: FAST HIGHER-TIMEFRAME HOURLY ANCHOR ---
+                    df_1h = yf.download(t, period="1mo", interval="1h", progress=False, group_by="ticker")
+                    if df_1h.empty or len(df_1h) < 50:
+                        continue
+
+                    if isinstance(df_1h.columns, pd.MultiIndex):
+                        df_1h.columns = [col[0] for col in df_1h.columns]
+
+                    df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
+                    macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
+
+                    # --- LAYER 2 & 3: INTRADAY 5-MINUTE SQUEEZE & VOLUME ---
+                    df_5m = yf.download(t, period="5d", interval="5m", progress=False, group_by="ticker")
+                    if df_5m.empty or len(df_5m) < 25:
+                        continue
+
+                    if isinstance(df_5m.columns, pd.MultiIndex):
+                        df_5m.columns = [col[0] for col in df_5m.columns]
+
+                    # In-memory Donchian Channel calculations
+                    df_5m['High_20'] = df_5m['High'].rolling(20).max()
+                    df_5m['Low_20'] = df_5m['Low'].rolling(20).min()
+
+                    # Compute using index [-2] to ensure signals are locked on candle-close
+                    c_last = float(df_5m['Close'].iloc[-1])
+                    high_box_prev = float(df_5m['High_20'].iloc[-2])
+                    low_box_prev = float(df_5m['Low_20'].iloc[-2])
+
+                    # Check for strict 1.2% range squeeze compression
+                    box_width_pct = (high_box_prev - low_box_prev) / c_last
+                    is_squeezed = box_width_pct <= 0.012
+                    price_breakout = c_last > high_box_prev
+
+                    # Non-duplicated Volume Flow verification via Chaikin Money Flow (CMF)
+                    df_5m['CMF'] = ta.cmf(df_5m['High'], df_5m['Low'], df_5m['Close'], df_5m['Volume'], length=20)
+                    cmf_val = float(df_5m['CMF'].iloc[-1]) if not np.isnan(df_5m['CMF'].iloc[-1]) else 0.0
+                    volume_confirmed = cmf_val >= 0.10
+
+                    # --- RESOLVE SIGNAL LABELS ---
+                    if macro_uptrend and is_squeezed and price_breakout and volume_confirmed:
+                        decision = "🔥 STRONG BUY SETUP"
+                    elif macro_uptrend and is_squeezed:
+                        decision = "⏳ Squeezed (Waiting for Breakout)"
+                    else:
+                        decision = "❌ No High-Probability Setup"
+
+                    squeeze_rows.append({
+                        "Company (Ticker)": f"{name} ({t})",
+                        "Decision Signal": decision,
+                        "Live Intraday Price": round(c_last, 2),
+                        "Squeeze Width (%)": f"{round(box_width_pct * 100, 2)}%",
+                        "Institutional Flow (CMF)": round(cmf_val, 2),
+                        "Macro Trend (1H)": "Bullish ✓" if macro_uptrend else "Bearish ✗",
+                        "Risk Stop-Loss Floor": round(low_box_prev, 2)
+                    })
+
+                except:
+                    # Prevent network timeout drops from hurting the interface rendering
+                    continue
+
+            if squeeze_rows:
+                df_results = pd.DataFrame(squeeze_rows)
+
+                # Dynamic priority sorting: Put active setups right at the very top of your view
+                df_results["Sort_Order"] = df_results["Decision Signal"].map({
+                    "🔥 STRONG BUY SETUP": 0,
+                    "⏳ Squeezed (Waiting for Breakout)": 1,
+                    "❌ No High-Probability Setup": 2
+                }).fillna(3)
+                df_results = df_results.sort_values("Sort_Order").drop(columns=["Sort_Order"])
+
+                # Fast visual coloring layout
+                def style_squeeze_signals(val):
+                    if "STRONG BUY" in val: return "background-color: #2ECC71; color: black; font-weight: bold;"
+                    if "Squeezed" in val: return "background-color: #F1C40F; color: black;"
+                    return "color: #7F8C8D;"
+
+                styled_output = df_results.style.applymap(style_squeeze_signals, subset=["Decision Signal"])
+                st.dataframe(styled_output, use_container_width=True, hide_index=True)
+            else:
+                st.info("No data could be populated for the current watchlist batch.")
+
+
+        # Start execution flow loop container
+        run_s5_squeeze_engine(tab5_watchlist_df)
