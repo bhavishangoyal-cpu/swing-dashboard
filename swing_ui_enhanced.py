@@ -1406,10 +1406,11 @@ with tab6:
                     return 'background-color: #004d26; color: #00FFCC; font-weight: bold'
                 return ''
 
-            # Apply style
-            styled_df = df.style.applymap(highlight_buys, subset=['ACTION'])
+            # Apply style using 'map' instead of 'applymap'
+            styled_df = df.style.map(highlight_buys, subset=['ACTION'])
+
+            # Display using st.dataframe
             st.dataframe(styled_df, use_container_width=True)
         else:
             st.warning("Scanner calibrating...")
-
     scan()
