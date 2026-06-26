@@ -14,27 +14,28 @@ from google import genai
 import pandas_ta as ta  # <-- Ensure this is imported as 'ta'
 
 
-# Fetch SPY data for Z-Score calculation
+# 1. Fetch data
 spy_data = yf.download("SPY", period="1mo", interval="1d", progress=False)
 close = spy_data['Close']
-mean = close.rolling(window=20).mean().iloc[-1]
-std = close.rolling(window=20).std().iloc[-1]
-z_score = (close.iloc[-1] - mean) / std
 
-# Determine Market Condition
-market_status = "STABLE"
-if z_score < -1.5:
+# 2. Calculate moving average and standard deviation
+# We use .iloc[-1] here to get the most recent value from the series
+mean = close.rolling(window=20).mean()
+std = close.rolling(window=20).std()
+
+# 3. Calculate Z-score series
+z_score_series = (close - mean) / std
+
+# 4. Extract ONLY the last value as a scalar (THIS FIXES YOUR ERROR)
+latest_z_score = z_score_series.iloc[-1]
+
+# 5. Perform your comparison using the scalar
+if latest_z_score < -1.5:
     market_status = "GOOD TIME (Oversold)"
-elif z_score > 1.5:
+elif latest_z_score > 1.5:
     market_status = "BAD TIME (Overbought)"
-
-# Display in Tab 6
-st.metric(label="SPY Current Price", value=f"${close.iloc[-1]:.2f}")
-st.metric(label="SPY Z-Score (20-day)", value=f"{z_score:.2f}")
-st.info(f"Market Sentiment: {market_status}")
-# Display the Status Bar
-spy_price, spy_change, spy_percent = get_spy_status()
-
+else:
+    market_status = "STABLE"
 col1, col2, col3 = st.columns(3)
 col1.metric("SPY Live Price", f"${spy_price:.2f}", f"{spy_change:+.2f} ({spy_percent:+.2f}%)")
 col3.info("Market Context: Watch SPY for trend confirmation before executing long signals.")
