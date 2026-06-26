@@ -13,32 +13,38 @@ import streamlit as st
 from google import genai
 import pandas_ta as ta  # <-- Ensure this is imported as 'ta'
 
-
 # 1. Fetch data
 spy_data = yf.download("SPY", period="1mo", interval="1d", progress=False)
 close = spy_data['Close']
 
-# 2. Calculate moving average and standard deviation
-# We use .iloc[-1] here to get the most recent value from the series
+# 2. Calculate values for the display
+spy_price = float(close.iloc[-1])
+# Calculate change and percent change based on the previous day
+prev_close = float(close.iloc[-2])
+spy_change = spy_price - prev_close
+spy_percent = (spy_change / prev_close) * 100
+
+# 3. Calculate moving average and standard deviation
 mean = close.rolling(window=20).mean()
 std = close.rolling(window=20).std()
 
-# 3. Calculate Z-score series
+# 4. Calculate Z-score and get the last value
 z_score_series = (close - mean) / std
-
-# 4. Extract ONLY the last value as a scalar (THIS FIXES YOUR ERROR)
 latest_z_score = z_score_series.iloc[-1]
 
-# 5. Perform your comparison using the scalar
+# 5. Determine Market Condition
 if latest_z_score < -1.5:
     market_status = "GOOD TIME (Oversold)"
 elif latest_z_score > 1.5:
     market_status = "BAD TIME (Overbought)"
 else:
     market_status = "STABLE"
+
+# 6. Display in Streamlit
 col1, col2, col3 = st.columns(3)
 col1.metric("SPY Live Price", f"${spy_price:.2f}", f"{spy_change:+.2f} ({spy_percent:+.2f}%)")
-col3.info("Market Context: Watch SPY for trend confirmation before executing long signals.")
+col2.metric("SPY Z-Score", f"{latest_z_score:.2f}")
+col3.info(f"Market Context: {market_status}")
 
 @st.cache_resource
 @st.cache_resource
