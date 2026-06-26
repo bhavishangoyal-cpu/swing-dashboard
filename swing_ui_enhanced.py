@@ -1398,9 +1398,18 @@ with tab6:
             })
 
         if rows:
-            st.dataframe(pd.DataFrame(rows), use_container_width=True)
+            df = pd.DataFrame(rows)
+
+            # Define the styling function
+            def highlight_buys(val):
+                if "BUY LONG" in str(val):
+                    return 'background-color: #004d26; color: #00FFCC; font-weight: bold'
+                return ''
+
+            # Apply style
+            styled_df = df.style.applymap(highlight_buys, subset=['ACTION'])
+            st.dataframe(styled_df, use_container_width=True)
         else:
             st.warning("Scanner calibrating...")
-
 
     scan()
