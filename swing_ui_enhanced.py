@@ -14,16 +14,24 @@ from google import genai
 import pandas_ta as ta  # <-- Ensure this is imported as 'ta'
 
 
-# --- Live Market Anchor (SPY) ---
-def get_spy_status():
-    spy = yf.Ticker("SPY")
-    data = spy.history(period="1d")
-    current_price = data['Close'].iloc[-1]
-    prev_close = data['Open'].iloc[0] # Using open for a quick daily trend
-    change = current_price - prev_close
-    percent = (change / prev_close) * 100
-    return current_price, change, percent
+# Fetch SPY data for Z-Score calculation
+spy_data = yf.download("SPY", period="1mo", interval="1d", progress=False)
+close = spy_data['Close']
+mean = close.rolling(window=20).mean().iloc[-1]
+std = close.rolling(window=20).std().iloc[-1]
+z_score = (close.iloc[-1] - mean) / std
 
+# Determine Market Condition
+market_status = "STABLE"
+if z_score < -1.5:
+    market_status = "GOOD TIME (Oversold)"
+elif z_score > 1.5:
+    market_status = "BAD TIME (Overbought)"
+
+# Display in Tab 6
+st.metric(label="SPY Current Price", value=f"${close.iloc[-1]:.2f}")
+st.metric(label="SPY Z-Score (20-day)", value=f"{z_score:.2f}")
+st.info(f"Market Sentiment: {market_status}")
 # Display the Status Bar
 spy_price, spy_change, spy_percent = get_spy_status()
 
