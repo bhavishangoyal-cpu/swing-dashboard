@@ -1311,30 +1311,28 @@ with tab5:
                             except:
                                 continue
 
-                    # Render Output Table
-                    if squeeze_rows:
-                        df_results = pd.DataFrame(squeeze_rows)
-                        df_results["Sort_Order"] = df_results["Decision Signal"].map({
-                            "🔥 STRONG BUY SETUP": 0,
-                            "⏳ Squeezed (Waiting for Breakout)": 1,
-                            "❌ No Squeeze Setup": 2
-                        }).fillna(3)
-                        df_results = df_results.sort_values("Sort_Order").drop(columns=["Sort_Order"])
+                                # Render Output Table
+                                if squeeze_rows:
+                                    df_results = pd.DataFrame(squeeze_rows)
+                                    df_results["Sort_Order"] = df_results["Decision Signal"].map({
+                                        "🔥 STRONG BUY SETUP": 0,
+                                        "⏳ Squeezed (Waiting for Breakout)": 1,
+                                        "❌ No Squeeze Setup": 2
+                                    }).fillna(3)
+                                    df_results = df_results.sort_values("Sort_Order").drop(columns=["Sort_Order"])
 
 
-                        def style_squeeze_signals(val):
-                            if "STRONG BUY" in val: return "background-color: #2ECC71; color: black; font-weight: bold;"
-                            if "Squeezed" in val: return "background-color: #F1C40F; color: black;"
-                            return "color: #7F8C8D;"
+                                    def style_squeeze_signals(val):
+                                        if "STRONG BUY" in val: return "background-color: #2ECC71; color: black; font-weight: bold;"
+                                        if "Squeezed" in val: return "background-color: #F1C40F; color: black;"
+                                        return "color: #7F8C8D;"
 
 
-                        styled_output = df_results.style.applymap(style_squeeze_signals, subset=["Decision Signal"])
-                        st.dataframe(styled_output, use_container_width=True, hide_index=True)
-                    else:
-                        st.info(
-                            "ℹ️ Watchlist loaded. Click 'Execute Live Intraday Scan' during market hours to run calculations.")
-                else:
-                    st.info("ℹ️ Ready to scan. Click 'Execute Live Intraday Scan' to begin processing.")
-
+                                    # CHANGE THIS LINE FROM .applymap TO .map
+                                    styled_output = df_results.style.map(style_squeeze_signals,
+                                                                         subset=["Decision Signal"])
+                                    st.dataframe(styled_output, use_container_width=True, hide_index=True)
+                                else:
+                                    st.info("ℹ️ Watchlist loaded. Click 'Execute Live Intraday Scan' during market hours to run calculations.")
     except Exception as global_tab_error:
         st.error(f"💥 Tab 5 Functional Error: {str(global_tab_error)}")
