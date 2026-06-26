@@ -1193,7 +1193,6 @@ with tab5:
             valid_ticker_count = 0
 
             for _, row in watchlist_data.iterrows():
-                # Strictly clean ticker names to remove any accidental whitespace or hidden newline chars
                 t = str(row["Yahoo Ticker"]).strip().upper() if pd.notna(row["Yahoo Ticker"]) else ""
                 name = row["Company Name"] if pd.notna(row["Company Name"]) else t
 
@@ -1206,36 +1205,34 @@ with tab5:
                     # --- LAYER 1: FAST HIGHER-TIMEFRAME HOURLY ANCHOR ---
                     df_1h = yf.download(t, period="1mo", interval="1h", progress=False, prepost=True)
                     if df_1h.empty:
-                        print(f"[Squeeze Scanner] {t} 1H data came back completely empty.")
                         continue
 
-                    # Bulletproof MultiIndex Flattening: If columns look like ('AAPL', 'Close'), strip to just 'Close'
+                    # Definitive extraction logic to flatten yfinance nested multi-index column layers
                     if isinstance(df_1h.columns, pd.MultiIndex):
-                        df_1h.columns = [col[1] if len(col) > 1 and col[1] != "" else col[0] for col in df_1h.columns]
-                    else:
-                        df_1h.columns = [str(col).strip() for col in df_1h.columns]
+                        df_1h.columns = df_1h.columns.get_level_values(0)
+                    df_1h.columns = [str(c).strip() for c in df_1h.columns]
+
+                    # Safe check for modern naming changes (fall back to Close if Adj Close isn't indexed)
+                    close_col_1h = 'Adj Close' if 'Adj Close' in df_1h.columns else 'Close'
 
                     if len(df_1h) < 15:
-                        print(f"[Squeeze Scanner] {t} 1H data row count too small ({len(df_1h)} rows).")
                         continue
 
-                    df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
-                    macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
+                    df_1h['EMA_50'] = df_1h[close_col_1h].ewm(span=50, adjust=False).mean()
+                    macro_uptrend = float(df_1h[close_col_1h].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
 
                     # --- LAYER 2 & 3: INTRADAY 5-MINUTE SQUEEZE & VOLUME ---
                     df_5m = yf.download(t, period="1mo", interval="5m", progress=False, prepost=True)
                     if df_5m.empty:
-                        print(f"[Squeeze Scanner] {t} 5M data came back completely empty.")
                         continue
 
-                    # Flatten columns for 5-minute data frame too
                     if isinstance(df_5m.columns, pd.MultiIndex):
-                        df_5m.columns = [col[1] if len(col) > 1 and col[1] != "" else col[0] for col in df_5m.columns]
-                    else:
-                        df_5m.columns = [str(col).strip() for col in df_5m.columns]
+                        df_5m.columns = df_5m.columns.get_level_values(0)
+                    df_5m.columns = [str(c).strip() for c in df_5m.columns]
+
+                    close_col_5m = 'Adj Close' if 'Adj Close' in df_5m.columns else 'Close'
 
                     if len(df_5m) < 25:
-                        print(f"[Squeeze Scanner] {t} 5M data row count too small ({len(df_5m)} rows).")
                         continue
 
                     # In-memory Donchian Channel calculations
@@ -1243,7 +1240,7 @@ with tab5:
                     df_5m['Low_20'] = df_5m['Low'].rolling(20).min()
 
                     # Compute using index [-2] to ensure signals are locked on candle-close
-                    c_last = float(df_5m['Close'].iloc[-1])
+                    c_last = float(df_5m[close_col_5m].iloc[-1])
                     high_box_prev = float(df_5m['High_20'].iloc[-2])
                     low_box_prev = float(df_5m['Low_20'].iloc[-2])
 
@@ -1252,8 +1249,8 @@ with tab5:
                     is_squeezed = box_width_pct <= 0.012
                     price_breakout = c_last > high_box_prev
 
-                    # Non-duplicated Volume Flow verification via Chaikin Money Flow (CMF)
-                    df_5m['CMF'] = ta.cmf(df_5m['High'], df_5m['Low'], df_5m['Close'], df_5m['Volume'], length=20)
+                    # Volume Flow verification via Chaikin Money Flow (CMF)
+                    df_5m['CMF'] = ta.cmf(df_5m['High'], df_5m['Low'], df_5m[close_col_5m], df_5m['Volume'], length=20)
                     cmf_val = float(df_5m['CMF'].iloc[-1]) if not np.isnan(df_5m['CMF'].iloc[-1]) else 0.0
                     volume_confirmed = cmf_val >= 0.10
 
@@ -1263,7 +1260,7 @@ with tab5:
                     elif macro_uptrend and is_squeezed:
                         decision = "⏳ Squeezed (Waiting for Breakout)"
                     else:
-                        decision = "❌ No High-Probability Setup"
+                        decision = "❌ No Squeeze Setup"
 
                     squeeze_rows.append({
                         "Company (Ticker)": f"{name} ({t})",
@@ -1276,7 +1273,6 @@ with tab5:
                     })
 
                 except Exception as e:
-                    print(f"[Squeeze Scanner Error] Failed rendering technical parameters for {t}: {str(e)}")
                     continue
 
             st.write(f"Processed **{valid_ticker_count}** valid tickers pulling from your active watch profile.")
@@ -1284,11 +1280,11 @@ with tab5:
             if squeeze_rows:
                 df_results = pd.DataFrame(squeeze_rows)
 
-                # Dynamic priority sorting: Put active setups right at the very top of your view
+                # Dynamic priority sorting: Active setups stay locked to the absolute top of the frame
                 df_results["Sort_Order"] = df_results["Decision Signal"].map({
                     "🔥 STRONG BUY SETUP": 0,
                     "⏳ Squeezed (Waiting for Breakout)": 1,
-                    "❌ No High-Probability Setup": 2
+                    "❌ No Squeeze Setup": 2
                 }).fillna(3)
                 df_results = df_results.sort_values("Sort_Order").drop(columns=["Sort_Order"])
 
@@ -1301,8 +1297,7 @@ with tab5:
                 styled_output = df_results.style.applymap(style_squeeze_signals, subset=["Decision Signal"])
                 st.dataframe(styled_output, use_container_width=True, hide_index=True)
             else:
-                st.info(
-                    "Watchlist data parsed successfully, but zero processed rows matched criteria. Check your IDE/terminal window logs for diagnostic tracking output.")
+                st.info("Watchlist data parsed successfully, but zero data frames returned valid calculation rows.")
 
 
         # Start execution flow loop container
