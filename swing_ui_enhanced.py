@@ -15,36 +15,51 @@ import pandas_ta as ta  # <-- Ensure this is imported as 'ta'
 
 # 1. Fetch data
 spy_data = yf.download("SPY", period="1mo", interval="1d", progress=False)
-close = spy_data['Close']
 
-# 2. Calculate values for the display
-spy_price = float(close.iloc[-1])
-# Calculate change and percent change based on the previous day
-prev_close = float(close.iloc[-2])
-spy_change = spy_price - prev_close
-spy_percent = (spy_change / prev_close) * 100
+# Check if data was actually returned
+if not spy_data.empty and 'Close' in spy_data.columns:
+    close = spy_data['Close']
 
-# 3. Calculate moving average and standard deviation
-mean = close.rolling(window=20).mean()
-std = close.rolling(window=20).std()
+    # Use .iloc[-1] to get the last value, and ensure we take the scalar value
+    # (if it's a DataFrame column, this handles it cleanly)
+    latest_val = close.iloc[-1]
 
-# 4. Calculate Z-score and get the last value
-z_score_series = (close - mean) / std
-latest_z_score = z_score_series.iloc[-1]
+    # If the value is a Series (common in some yfinance versions),
+    # extract the first element
+    if hasattr(latest_val, 'iloc'):
+        latest_val = latest_val.iloc[0]
 
-# 5. Determine Market Condition
-if latest_z_score < -1.5:
-    market_status = "GOOD TIME (Oversold)"
-elif latest_z_score > 1.5:
-    market_status = "BAD TIME (Overbought)"
+    spy_price = float(latest_val)
+
+    # Calculate previous close safely
+    prev_close = float(close.iloc[-2])
+    spy_change = spy_price - prev_close
+    spy_percent = (spy_change / prev_close) * 100
+
+    # 2. Calculate moving average and standard deviation
+    mean = close.rolling(window=20).mean()
+    std = close.rolling(window=20).std()
+
+    # 3. Calculate Z-score
+    z_score_series = (close - mean) / std
+    latest_z_score = float(z_score_series.iloc[-1])
+
+    # 4. Determine Market Condition
+    if latest_z_score < -1.5:
+        market_status = "GOOD TIME (Oversold)"
+    elif latest_z_score > 1.5:
+        market_status = "BAD TIME (Overbought)"
+    else:
+        market_status = "STABLE"
+
+    # 5. Display
+    col1, col2, col3 = st.columns(3)
+    col1.metric("SPY Live Price", f"${spy_price:.2f}", f"{spy_change:+.2f} ({spy_percent:+.2f}%)")
+    col2.metric("SPY Z-Score", f"{latest_z_score:.2f}")
+    col3.info(f"Market Context: {market_status}")
+
 else:
-    market_status = "STABLE"
-
-# 6. Display in Streamlit
-col1, col2, col3 = st.columns(3)
-col1.metric("SPY Live Price", f"${spy_price:.2f}", f"{spy_change:+.2f} ({spy_percent:+.2f}%)")
-col2.metric("SPY Z-Score", f"{latest_z_score:.2f}")
-col3.info(f"Market Context: {market_status}")
+    st.warning("SPY data unavailable for market context.")
 
 @st.cache_resource
 @st.cache_resource
