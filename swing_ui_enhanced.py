@@ -1192,7 +1192,7 @@ with tab5:
 
 
         # Isolate the live refresh engine inside a fragment so it doesn't interrupt other tabs
-        @st.fragment(run_every=300)  # Auto-refreshes every 300 seconds (5 minutes) during market hours
+        @st.fragment(run_every=300)  # Auto-refreshes every 300 seconds (5 minutes)
         def run_s5_squeeze_engine(watchlist_data):
             st.write(f"🔄 Last Live Scan: `{time.strftime('%H:%M:%S')} PST` (Auto-refreshes isolated to Tab 5 every 5m)")
 
@@ -1207,16 +1207,19 @@ with tab5:
 
                 try:
                     # --- LAYER 1: FAST HIGHER-TIMEFRAME HOURLY ANCHOR ---
-                    # Use multi_level_index=False to force yfinance to output flat simple columns instantly
-                    df_1h = yf.download(t, period="1mo", interval="1h", progress=False, multi_level_index=False)
-                    if df_1h.empty or len(df_1h) < 30:
+                    # Added prepost=True to ensure data is always present outside standard market hours
+                    df_1h = yf.download(t, period="1mo", interval="1h", progress=False, multi_level_index=False,
+                                        prepost=True)
+                    if df_1h.empty or len(df_1h) < 20:
                         continue
 
                     df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
                     macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
 
                     # --- LAYER 2 & 3: INTRADAY 5-MINUTE SQUEEZE & VOLUME ---
-                    df_5m = yf.download(t, period="5d", interval="5m", progress=False, multi_level_index=False)
+                    # Increased period to 1mo so there is a deep offline buffer of bars even on weekends/pre-market
+                    df_5m = yf.download(t, period="1mo", interval="5m", progress=False, multi_level_index=False,
+                                        prepost=True)
                     if df_5m.empty or len(df_5m) < 25:
                         continue
 
@@ -1258,8 +1261,6 @@ with tab5:
                     })
 
                 except Exception as e:
-                    # Let's temporarily print the error to the console logs if something else goes wrong
-                    print(f"Squeeze Scanner error tracking ticker {t}: {str(e)}")
                     continue
 
             if squeeze_rows:
@@ -1282,8 +1283,7 @@ with tab5:
                 styled_output = df_results.style.applymap(style_squeeze_signals, subset=["Decision Signal"])
                 st.dataframe(styled_output, use_container_width=True, hide_index=True)
             else:
-                st.info(
-                    "Watchlist download parsed correctly, but no stocks matched data structural validation criteria.")
+                st.info("Watchlist data parsed successfully, but no matching tickers passed structural metrics checks.")
 
 
         # Start execution flow loop container
