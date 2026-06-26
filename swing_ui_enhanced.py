@@ -33,12 +33,14 @@ st.title("🎛️ Master Strategy & Scanning Interface")
 
 # Setup Global Navigation Tabs (Now with Tab 4)
 # Setup Global Navigation Tabs (Expanded with Tab 5)
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+# 1. Update the tabs list to include the 6th title
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🎯 Atharv Swing Scanner (5m/15m)",
     "📈 Goel's Swing Strategy",
     "📊 52-Week High/Low Strategy",
     "🚀 Atharv Corporate Guide",
-    "🎯 80%+ Intraday Squeeze"
+    "🎯 80%+ Intraday Squeeze",
+    "🦅 Institutional Alpha Matrix"
 ])
 
 WATCHLIST_PATH = "watchlist.csv"
@@ -1336,3 +1338,69 @@ with tab5:
                                     st.info("ℹ️ Watchlist loaded. Click 'Execute Live Intraday Scan' during market hours to run calculations.")
     except Exception as global_tab_error:
         st.error(f"💥 Tab 5 Functional Error: {str(global_tab_error)}")
+
+
+# 6. Add your scanner code into tab6
+
+with tab6:
+    st.markdown("# 🦅 Institutional Alpha Matrix")
+    st.markdown("Real-time confluence tracking of sector rotation.")
+
+    # 1. Configuration: Expanded sector map
+    sector_map = {
+        "Tech (QQQ)": {"core": "QQQ", "bull": "TQQQ", "bear": "SQQQ"},
+        "S&P 500 (SPY)": {"core": "SPY", "bull": "UPRO", "bear": "SPXU"},
+        "Semis (SOXX)": {"core": "SOXX", "bull": "SOXL", "bear": "SOXS"},
+        "Energy (USO)": {"core": "USO", "bull": "GUSH", "bear": "DRIP"},
+        "Biotech (XBI)": {"core": "XBI", "bull": "LABU", "bear": "LABD"},
+        "Financial (XLF)": {"core": "XLF", "bull": "FAS", "bear": "FAZ"},
+        "Gold (GDX)": {"core": "GDX", "bull": "NUGT", "bear": "DUST"},
+        "Real Estate (XLRE)": {"core": "XLRE", "bull": "DRN", "bear": "DRV"}
+    }
+
+
+    # 2. Scanning logic
+    @st.fragment(run_every=30)
+    def scan():
+        tickers = list(set([cfg[k] for cfg in sector_map.values() for k in ["core", "bull", "bear"]]))
+
+        # Pull 5 days of history for calculation stability
+        data = yf.download(tickers, period="5d", interval="15m", progress=False)
+
+        rows = []
+        for label, cfg in sector_map.items():
+            core = cfg["core"]
+
+            # Check for data
+            if core not in data['Close'].columns: continue
+
+            close = data['Close'][core]
+            vol = data['Volume'][core]
+
+            # Mathematical indicators
+            vwap = (close * vol).cumsum() / vol.cumsum()
+            z = (close.iloc[-1] - vwap.iloc[-1]) / (close.rolling(20).std().iloc[-1] + 1e-9)
+
+            # Signal logic
+            signal = "⏳ MONITORING"
+            if z < -2.0:
+                signal = f"🔥 BUY LONG: {cfg['bull']}"
+            elif z > 2.0:
+                signal = f"🚨 BUY SHORT: {cfg['bear']}"
+
+            rows.append({
+                "Sector": label,
+                "Bull": cfg['bull'],
+                "Bear": cfg['bear'],
+                "Price": f"${close.iloc[-1]:.2f}",
+                "Z-Score": round(z, 2),
+                "ACTION": signal
+            })
+
+        if rows:
+            st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        else:
+            st.warning("Scanner calibrating...")
+
+
+    scan()
