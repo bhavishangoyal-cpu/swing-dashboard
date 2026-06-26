@@ -1181,46 +1181,61 @@ with tab5:
     # Load tickers dynamically from your existing master watchlist framework
     tab5_watchlist_df = shared_load_watchlist()
 
-    # Pre-clean the tickers list to filter out any empty spaces, indices or non-string issues
-    tab5_tickers = [str(t).strip().upper() for t in tab5_watchlist_df["Yahoo Ticker"].tolist() if
-                    pd.notna(t) and str(t).strip()]
-
-    if not tab5_tickers:
+    if tab5_watchlist_df.empty:
         st.warning("⚠️ Your watchlist.csv file is empty. Please add tickers to run the Intraday Squeeze Scanner.")
     else:
-        st.write(f"Scanning **{len(tab5_tickers)}** tickers pulling directly from your live `watchlist.csv` profile.")
-
-
         # Isolate the live refresh engine inside a fragment so it doesn't interrupt other tabs
         @st.fragment(run_every=300)  # Auto-refreshes every 300 seconds (5 minutes)
         def run_s5_squeeze_engine(watchlist_data):
             st.write(f"🔄 Last Live Scan: `{time.strftime('%H:%M:%S')} PST` (Auto-refreshes isolated to Tab 5 every 5m)")
 
             squeeze_rows = []
+            valid_ticker_count = 0
 
             for _, row in watchlist_data.iterrows():
-                t = str(row["Yahoo Ticker"]).strip().upper()
-                name = row["Company Name"]
+                # Strictly clean ticker names to remove any accidental whitespace or hidden newline chars
+                t = str(row["Yahoo Ticker"]).strip().upper() if pd.notna(row["Yahoo Ticker"]) else ""
+                name = row["Company Name"] if pd.notna(row["Company Name"]) else t
 
-                if not t or t == "NAN":
+                if not t or t in ["NAN", "NONE", ""]:
                     continue
+
+                valid_ticker_count += 1
 
                 try:
                     # --- LAYER 1: FAST HIGHER-TIMEFRAME HOURLY ANCHOR ---
-                    # Added prepost=True to ensure data is always present outside standard market hours
-                    df_1h = yf.download(t, period="1mo", interval="1h", progress=False, multi_level_index=False,
-                                        prepost=True)
-                    if df_1h.empty or len(df_1h) < 20:
+                    df_1h = yf.download(t, period="1mo", interval="1h", progress=False, prepost=True)
+                    if df_1h.empty:
+                        print(f"[Squeeze Scanner] {t} 1H data came back completely empty.")
+                        continue
+
+                    # Bulletproof MultiIndex Flattening: If columns look like ('AAPL', 'Close'), strip to just 'Close'
+                    if isinstance(df_1h.columns, pd.MultiIndex):
+                        df_1h.columns = [col[1] if len(col) > 1 and col[1] != "" else col[0] for col in df_1h.columns]
+                    else:
+                        df_1h.columns = [str(col).strip() for col in df_1h.columns]
+
+                    if len(df_1h) < 15:
+                        print(f"[Squeeze Scanner] {t} 1H data row count too small ({len(df_1h)} rows).")
                         continue
 
                     df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
                     macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
 
                     # --- LAYER 2 & 3: INTRADAY 5-MINUTE SQUEEZE & VOLUME ---
-                    # Increased period to 1mo so there is a deep offline buffer of bars even on weekends/pre-market
-                    df_5m = yf.download(t, period="1mo", interval="5m", progress=False, multi_level_index=False,
-                                        prepost=True)
-                    if df_5m.empty or len(df_5m) < 25:
+                    df_5m = yf.download(t, period="1mo", interval="5m", progress=False, prepost=True)
+                    if df_5m.empty:
+                        print(f"[Squeeze Scanner] {t} 5M data came back completely empty.")
+                        continue
+
+                    # Flatten columns for 5-minute data frame too
+                    if isinstance(df_5m.columns, pd.MultiIndex):
+                        df_5m.columns = [col[1] if len(col) > 1 and col[1] != "" else col[0] for col in df_5m.columns]
+                    else:
+                        df_5m.columns = [str(col).strip() for col in df_5m.columns]
+
+                    if len(df_5m) < 25:
+                        print(f"[Squeeze Scanner] {t} 5M data row count too small ({len(df_5m)} rows).")
                         continue
 
                     # In-memory Donchian Channel calculations
@@ -1261,7 +1276,10 @@ with tab5:
                     })
 
                 except Exception as e:
+                    print(f"[Squeeze Scanner Error] Failed rendering technical parameters for {t}: {str(e)}")
                     continue
+
+            st.write(f"Processed **{valid_ticker_count}** valid tickers pulling from your active watch profile.")
 
             if squeeze_rows:
                 df_results = pd.DataFrame(squeeze_rows)
@@ -1283,7 +1301,8 @@ with tab5:
                 styled_output = df_results.style.applymap(style_squeeze_signals, subset=["Decision Signal"])
                 st.dataframe(styled_output, use_container_width=True, hide_index=True)
             else:
-                st.info("Watchlist data parsed successfully, but no matching tickers passed structural metrics checks.")
+                st.info(
+                    "Watchlist data parsed successfully, but zero processed rows matched criteria. Check your IDE/terminal window logs for diagnostic tracking output.")
 
 
         # Start execution flow loop container
