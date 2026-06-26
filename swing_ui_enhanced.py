@@ -1228,25 +1228,32 @@ with tab5:
                 # ==============================================================================
                 for t in tickers_list:
                     try:
-                        # Extract this specific stock's data slice from the multi-index matrices
-                        df_1h = master_1h[t].dropna(subset=['Close']) if is_multi else master_1h.dropna(
-                            subset=['Close'])
-                        df_5m = master_5m[t].dropna(subset=['Close']) if is_multi else master_5m.dropna(
-                            subset=['Close'])
+                        # 1. Extract this specific stock's columns from the master batch FIRST
+                        if is_multi:
+                            # Safely slice out only this ticker's data to prevent cross-ticker row deletion
+                            df_1h = master_1h[t].copy()
+                            df_5m = master_5m[t].copy()
+                        else:
+                            df_1h = master_1h.copy()
+                            df_5m = master_5m.copy()
 
-                        if df_1h.empty or len(df_1h) < 15 or df_5m.empty or len(df_5m) < 25:
-                            continue
-
-                        # Standardize columns to guarantee uppercase names
+                        # 2. Standardize column cases instantly
                         df_1h.columns = [str(c).strip().capitalize() for c in df_1h.columns]
                         df_5m.columns = [str(c).strip().capitalize() for c in df_5m.columns]
+
+                        # 3. Drop empty rows for THIS TICKER ALONE after slicing
+                        df_1h = df_1h.dropna(subset=['Close'])
+                        df_5m = df_5m.dropna(subset=['Close'])
+
+                        # Verify we have enough localized bars to calculate technical overlays
+                        if df_1h.empty or len(df_1h) < 15 or df_5m.empty or len(df_5m) < 25:
+                            continue
 
                         # --- LAYER 1: FAST HIGHER-TIMEFRAME HOURLY ANCHOR ---
                         df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
                         macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
 
                         # --- LAYER 2 & 3: INTRADAY 5-MINUTE SQUEEZE & VOLUME ---
-                        # In-memory Donchian Channel calculations
                         df_5m['High_20'] = df_5m['High'].rolling(20).max()
                         df_5m['Low_20'] = df_5m['Low'].rolling(20).min()
 
@@ -1284,8 +1291,9 @@ with tab5:
                             "Risk Stop-Loss Floor": round(low_box_prev, 2)
                         })
 
-                    except:
-                        # Ensures that a single parsing error on an options ticker or bad ticker symbol won't crash the loop
+                    except Exception as loop_err:
+                        # Keeps track of why a specific index field skipped in your terminal console
+                        print(f"Skipping {t} inside extraction loop: {str(loop_err)}")
                         continue
 
             except Exception as e:
