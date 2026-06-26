@@ -1172,130 +1172,135 @@ with tab4:
                         st.error(f"AI Synthesis module failed to execute: {ai_err}")
 
 # ==============================================================================
-# 🎯 TAB 5: 80%+ INTRADAY SQUEEZE BREAKOUT STRATEGY (FINAL WORKING ENGINE)
+# 🎯 TAB 5: 80%+ INTRADAY SQUEEZE BREAKOUT STRATEGY (UNIVERSAL COMPATIBLE ENGINE)
 # ==============================================================================
 with tab5:
     st.header("🎯 High-Effectiveness Intraday Squeeze Scanner")
     st.caption("Filters for 1.2% Volatility Squeezes with Multi-Timeframe Institutional Volume Confirmation")
 
-    # Load tickers dynamically from your existing master watchlist framework
+    # 1. Safe Load Watchlist Framework
     tab5_watchlist_df = shared_load_watchlist()
 
-    # Clean the tickers list
-    tab5_tickers = [
-        str(t).strip().upper()
-        for t in tab5_watchlist_df["Yahoo Ticker"].tolist()
-        if pd.notna(t) and str(t).strip() and str(t).strip().upper() not in ["NAN", "NONE"]
-    ]
-
-    if not tab5_tickers:
+    if tab5_watchlist_df.empty:
         st.warning("⚠️ Your watchlist.csv file is empty. Please add tickers to run the Intraday Squeeze Scanner.")
     else:
-        st.write(f"Loaded **{len(tab5_tickers)}** symbols from your live profile. Ready for batch scanning.")
+        # Extract and clean ticker names cleanly
+        tab5_tickers = []
+        for t in tab5_watchlist_df["Yahoo Ticker"].tolist():
+            if pd.notna(t):
+                ticker_str = str(t).strip().upper()
+                if ticker_str and ticker_str not in ["NAN", "NONE"]:
+                    tab5_tickers.append(ticker_str)
 
+        if not tab5_tickers:
+            st.warning("⚠️ No valid tickers found in your watchlist column.")
+        else:
+            st.write(f"Loaded **{len(tab5_tickers)}** symbols from your live profile.")
 
-        # Isolate the live refresh engine inside a fragment so it doesn't interrupt other tabs
-        @st.fragment(run_every=300)  # Auto-refreshes every 5 minutes
-        def run_s5_squeeze_engine(tickers_list, watchlist_full_df):
-            st.write(f"🔄 Last Live Scan: `{time.strftime('%H:%M:%S')} PST` (Auto-refreshes isolated to Tab 5 every 5m)")
+            # Create interactive manual refresh button to replace the decorator safely
+            run_scan = st.button("🔄 Execute Live Intraday Scan", key="run_tab5_squeeze_scan")
 
-            # Map Ticker -> Company Name
-            ticker_to_name = dict(zip(watchlist_full_df["Yahoo Ticker"].astype(str).str.strip().str.upper(),
-                                      watchlist_full_df["Company Name"]))
+            # Map Ticker -> Company Name for output lookups
+            ticker_to_name = {}
+            for _, row in tab5_watchlist_df.iterrows():
+                if pd.notna(row["Yahoo Ticker"]):
+                    tk = str(row["Yahoo Ticker"]).strip().upper()
+                    nm = row["Company Name"] if pd.notna(row["Company Name"]) else tk
+                    ticker_to_name[tk] = nm
 
             squeeze_rows = []
 
+            # We wrap the core engine logic cleanly so nothing can crash the top-level script
             try:
-                # 🚀 BATCH DOWNLOAD BOTH DATASETS
-                with st.spinner("Streaming live market data matrices..."):
-                    master_1h = yf.download(tickers_list, period="1mo", interval="1h", progress=False,
+                # 🚀 ULTRA-FAST BATCH DATA ACQUISITION
+                with st.spinner("Streaming live market data matrices from Yahoo Finance..."):
+                    master_1h = yf.download(tab5_tickers, period="1mo", interval="1h", progress=False,
                                             group_by="ticker", prepost=True)
-                    master_5m = yf.download(tickers_list, period="5d", interval="5m", progress=False, group_by="ticker",
+                    master_5m = yf.download(tab5_tickers, period="5d", interval="5m", progress=False, group_by="ticker",
                                             prepost=True)
 
-                # Check data structural return
                 if master_5m.empty or master_1h.empty:
                     st.info(
-                        "🌙 Market is currently closed or data is unavailable. Re-run during market hours to see live streams.")
-                    return
+                        "🌙 Market data stream is currently empty or unavailable (After-Hours). Try running during active market hours!")
+                else:
+                    is_multi = len(tab5_tickers) > 1
 
-                is_multi = len(tickers_list) > 1
+                    # 🧠 IN-MEMORY TECHNICAL OVERLAY CALCULATIONS
+                    for t in tab5_tickers:
+                        try:
+                            # Safely extract specific multi-index data blocks without dropping sibling tickers
+                            if is_multi:
+                                if t not in master_1h.columns.get_level_values(
+                                        0) or t not in master_5m.columns.get_level_values(0):
+                                    continue
+                                df_1h = master_1h[t].copy()
+                                df_5m = master_5m[t].copy()
+                            else:
+                                df_1h = master_1h.copy()
+                                df_5m = master_5m.copy()
 
-                # 🧠 IN-MEMORY CALCULATIONS
-                for t in tickers_list:
-                    try:
-                        # Extract the columns safely
-                        if is_multi:
-                            if t not in master_1h.columns.levels[0] or t not in master_5m.columns.levels[0]:
+                            # Standardize column header strings to sentence case immediately
+                            df_1h.columns = [str(c).strip().capitalize() for c in df_1h.columns]
+                            df_5m.columns = [str(c).strip().capitalize() for c in df_5m.columns]
+
+                            # Clear individual missing gaps
+                            df_1h = df_1h.dropna(subset=['Close'])
+                            df_5m = df_5m.dropna(subset=['Close'])
+
+                            if len(df_1h) < 15 or len(df_5m) < 25:
                                 continue
-                            df_1h = master_1h[t].copy()
-                            df_5m = master_5m[t].copy()
-                        else:
-                            df_1h = master_1h.copy()
-                            df_5m = master_5m.copy()
 
-                        # Clean indices and drop empty data gaps
-                        df_1h = df_1h.dropna(subset=['Close'])
-                        df_5m = df_5m.dropna(subset=['Close'])
+                            # --- LAYER 1: HIGHER-TIMEFRAME HOURLY ANCHOR ---
+                            df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
+                            macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
 
-                        if len(df_1h) < 15 or len(df_5m) < 25:
+                            # --- LAYER 2 & 3: INTRADAY 5-MINUTE SQUEEZE & VOLUME ---
+                            df_5m['High_20'] = df_5m['High'].rolling(20).max()
+                            df_5m['Low_20'] = df_5m['Low'].rolling(20).min()
+
+                            c_last = float(df_5m['Close'].iloc[-1])
+                            high_box_prev = float(df_5m['High_20'].iloc[-2])
+                            low_box_prev = float(df_5m['Low_20'].iloc[-2])
+
+                            box_width_pct = (high_box_prev - low_box_prev) / c_last
+                            is_squeezed = box_width_pct <= 0.012
+                            price_breakout = c_last > high_box_prev
+
+                            # Chaikin Money Flow Calculation via pandas_ta
+                            df_5m['CMF'] = ta.cmf(df_5m['High'], df_5m['Low'], df_5m['Close'], df_5m['Volume'],
+                                                  length=20)
+                            cmf_val = float(df_5m['CMF'].iloc[-1]) if not np.isnan(df_5m['CMF'].iloc[-1]) else 0.0
+                            volume_confirmed = cmf_val >= 0.10
+
+                            # SIGNAL GENERATION ROUTER
+                            if macro_uptrend and is_squeezed and price_breakout and volume_confirmed:
+                                decision = "🔥 STRONG BUY SETUP"
+                            elif macro_uptrend and is_squeezed:
+                                decision = "⏳ Squeezed (Waiting for Breakout)"
+                            else:
+                                decision = "❌ No Squeeze Setup"
+
+                            name = ticker_to_name.get(t, t)
+                            squeeze_rows.append({
+                                "Company (Ticker)": f"{name} ({t})",
+                                "Decision Signal": decision,
+                                "Live Intraday Price": round(c_last, 2),
+                                "Squeeze Width (%)": f"{round(box_width_pct * 100, 2)}%",
+                                "Institutional Flow (CMF)": round(cmf_val, 2),
+                                "Macro Trend (1H)": "Bullish ✓" if macro_uptrend else "Bearish ✗",
+                                "Risk Stop-Loss Floor": round(low_box_prev, 2)
+                            })
+                        except:
                             continue
 
-                        # Standardize Column Headers to Capitalized Strings
-                        df_1h.columns = [str(c).strip().capitalize() for c in df_1h.columns]
-                        df_5m.columns = [str(c).strip().capitalize() for c in df_5m.columns]
-
-                        # --- LAYER 1: HIGHER-TIMEFRAME HOURLY ANCHOR ---
-                        df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
-                        macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
-
-                        # --- LAYER 2 & 3: INTRADAY 5-MINUTE SQUEEZE & VOLUME ---
-                        df_5m['High_20'] = df_5m['High'].rolling(20).max()
-                        df_5m['Low_20'] = df_5m['Low'].rolling(20).min()
-
-                        c_last = float(df_5m['Close'].iloc[-1])
-                        high_box_prev = float(df_5m['High_20'].iloc[-2])
-                        low_box_prev = float(df_5m['Low_20'].iloc[-2])
-
-                        box_width_pct = (high_box_prev - low_box_prev) / c_last
-                        is_squeezed = box_width_pct <= 0.012
-                        price_breakout = c_last > high_box_prev
-
-                        # Chaikin Money Flow Calculation via pandas_ta
-                        df_5m['CMF'] = ta.cmf(df_5m['High'], df_5m['Low'], df_5m['Close'], df_5m['Volume'], length=20)
-                        cmf_val = float(df_5m['CMF'].iloc[-1]) if not np.isnan(df_5m['CMF'].iloc[-1]) else 0.0
-                        volume_confirmed = cmf_val >= 0.10
-
-                        # SIGNAL ROUTING
-                        if macro_uptrend and is_squeezed and price_breakout and volume_confirmed:
-                            decision = "🔥 STRONG BUY SETUP"
-                        elif macro_uptrend and is_squeezed:
-                            decision = "⏳ Squeezed (Waiting for Breakout)"
-                        else:
-                            decision = "❌ No Squeeze Setup"
-
-                        name = ticker_to_name.get(t, t)
-                        squeeze_rows.append({
-                            "Company (Ticker)": f"{name} ({t})",
-                            "Decision Signal": decision,
-                            "Live Intraday Price": round(c_last, 2),
-                            "Squeeze Width (%)": f"{round(box_width_pct * 100, 2)}%",
-                            "Institutional Flow (CMF)": round(cmf_val, 2),
-                            "Macro Trend (1H)": "Bullish ✓" if macro_uptrend else "Bearish ✗",
-                            "Risk Stop-Loss Floor": round(low_box_prev, 2)
-                        })
-                    except:
-                        continue
-
             except Exception as batch_err:
-                st.error(f"Batch Interface Connection Error: {str(batch_err)}")
-                return
+                st.error(f"Data Pipeline Error: {str(batch_err)}")
 
-            # RENDERING DATAFRAME TO THE SCREEN
+            # 📊 VISUAL RENDERING BLOCK
             if squeeze_rows:
                 df_results = pd.DataFrame(squeeze_rows)
 
-                # Sort setups to show active trades at the top
+                # Priority sorting matrix
                 df_results["Sort_Order"] = df_results["Decision Signal"].map({
                     "🔥 STRONG BUY SETUP": 0,
                     "⏳ Squeezed (Waiting for Breakout)": 1,
@@ -1303,18 +1308,16 @@ with tab5:
                 }).fillna(3)
                 df_results = df_results.sort_values("Sort_Order").drop(columns=["Sort_Order"])
 
-                # Dynamic Color Layout Styling
+
+                # Conditional styling method
                 def style_squeeze_signals(val):
                     if "STRONG BUY" in val: return "background-color: #2ECC71; color: black; font-weight: bold;"
                     if "Squeezed" in val: return "background-color: #F1C40F; color: black;"
                     return "color: #7F8C8D;"
 
+
                 styled_output = df_results.style.applymap(style_squeeze_signals, subset=["Decision Signal"])
                 st.dataframe(styled_output, use_container_width=True, hide_index=True)
             else:
                 st.info(
-                    "Watchlist download parsed correctly, but zero data rows matched criteria. Ready for tomorrow's opening bell.")
-
-
-        # Fire Engine Squeeze Container
-        run_s5_squeeze_engine(tab5_tickers, tab5_watchlist_df)
+                    "ℹ️ Data parsed successfully, but zero tickers met the calculation criteria. Keep this screen ready for tomorrow's live market session!")
