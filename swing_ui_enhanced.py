@@ -13,38 +13,35 @@ import streamlit as st
 from google import genai
 import pandas_ta as ta  # <-- Ensure this is imported as 'ta'
 
-# 1. Fetch data
+
+
+# 1. Fetch and Clean Data
 spy_data = yf.download("SPY", period="1mo", interval="1d", progress=False)
 
-# Check if data was actually returned
-if not spy_data.empty and 'Close' in spy_data.columns:
-    close = spy_data['Close']
+# Clean multi-index columns if present
+if isinstance(spy_data.columns, pd.MultiIndex):
+    spy_data.columns = spy_data.columns.get_level_values(0)
 
-    # Use .iloc[-1] to get the last value, and ensure we take the scalar value
-    # (if it's a DataFrame column, this handles it cleanly)
-    latest_val = close.iloc[-1]
+# Extract 'Close' series safely
+close = spy_data['Close']
+if isinstance(close, pd.DataFrame):
+    close = close.iloc[:, 0]
 
-    # If the value is a Series (common in some yfinance versions),
-    # extract the first element
-    if hasattr(latest_val, 'iloc'):
-        latest_val = latest_val.iloc[0]
-
-    spy_price = float(latest_val)
-
-    # Calculate previous close safely
+# 2. Perform Calculations
+if len(close) >= 20:
+    spy_price = float(close.iloc[-1])
     prev_close = float(close.iloc[-2])
     spy_change = spy_price - prev_close
     spy_percent = (spy_change / prev_close) * 100
 
-    # 2. Calculate moving average and standard deviation
+    # Moving Average & Z-Score
     mean = close.rolling(window=20).mean()
     std = close.rolling(window=20).std()
 
-    # 3. Calculate Z-score
     z_score_series = (close - mean) / std
     latest_z_score = float(z_score_series.iloc[-1])
 
-    # 4. Determine Market Condition
+    # Market Health Logic
     if latest_z_score < -1.5:
         market_status = "GOOD TIME (Oversold)"
     elif latest_z_score > 1.5:
@@ -52,14 +49,16 @@ if not spy_data.empty and 'Close' in spy_data.columns:
     else:
         market_status = "STABLE"
 
-    # 5. Display
+    # 3. Display
+    st.subheader("Market Context: S&P 500 (SPY)")
     col1, col2, col3 = st.columns(3)
-    col1.metric("SPY Live Price", f"${spy_price:.2f}", f"{spy_change:+.2f} ({spy_percent:+.2f}%)")
+    col1.metric("SPY Price", f"${spy_price:.2f}", f"{spy_change:+.2f} ({spy_percent:+.2f}%)")
     col2.metric("SPY Z-Score", f"{latest_z_score:.2f}")
-    col3.info(f"Market Context: {market_status}")
+    col3.info(f"Market Sentiment: {market_status}")
 
+    st.divider()
 else:
-    st.warning("SPY data unavailable for market context.")
+    st.warning("Gathering market data...")
 
 @st.cache_resource
 @st.cache_resource
