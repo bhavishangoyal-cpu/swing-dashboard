@@ -1180,7 +1180,10 @@ with tab5:
 
     # Load tickers dynamically from your existing master watchlist framework
     tab5_watchlist_df = shared_load_watchlist()
-    tab5_tickers = tab5_watchlist_df["Yahoo Ticker"].tolist()
+
+    # Pre-clean the tickers list to filter out any empty spaces, indices or non-string issues
+    tab5_tickers = [str(t).strip().upper() for t in tab5_watchlist_df["Yahoo Ticker"].tolist() if
+                    pd.notna(t) and str(t).strip()]
 
     if not tab5_tickers:
         st.warning("⚠️ Your watchlist.csv file is empty. Please add tickers to run the Intraday Squeeze Scanner.")
@@ -1196,28 +1199,26 @@ with tab5:
             squeeze_rows = []
 
             for _, row in watchlist_data.iterrows():
-                t = row["Yahoo Ticker"]
+                t = str(row["Yahoo Ticker"]).strip().upper()
                 name = row["Company Name"]
+
+                if not t or t == "NAN":
+                    continue
 
                 try:
                     # --- LAYER 1: FAST HIGHER-TIMEFRAME HOURLY ANCHOR ---
-                    df_1h = yf.download(t, period="1mo", interval="1h", progress=False, group_by="ticker")
-                    if df_1h.empty or len(df_1h) < 50:
+                    # Use multi_level_index=False to force yfinance to output flat simple columns instantly
+                    df_1h = yf.download(t, period="1mo", interval="1h", progress=False, multi_level_index=False)
+                    if df_1h.empty or len(df_1h) < 30:
                         continue
-
-                    if isinstance(df_1h.columns, pd.MultiIndex):
-                        df_1h.columns = [col[0] for col in df_1h.columns]
 
                     df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
                     macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
 
                     # --- LAYER 2 & 3: INTRADAY 5-MINUTE SQUEEZE & VOLUME ---
-                    df_5m = yf.download(t, period="5d", interval="5m", progress=False, group_by="ticker")
+                    df_5m = yf.download(t, period="5d", interval="5m", progress=False, multi_level_index=False)
                     if df_5m.empty or len(df_5m) < 25:
                         continue
-
-                    if isinstance(df_5m.columns, pd.MultiIndex):
-                        df_5m.columns = [col[0] for col in df_5m.columns]
 
                     # In-memory Donchian Channel calculations
                     df_5m['High_20'] = df_5m['High'].rolling(20).max()
@@ -1256,8 +1257,9 @@ with tab5:
                         "Risk Stop-Loss Floor": round(low_box_prev, 2)
                     })
 
-                except:
-                    # Prevent network timeout drops from hurting the interface rendering
+                except Exception as e:
+                    # Let's temporarily print the error to the console logs if something else goes wrong
+                    print(f"Squeeze Scanner error tracking ticker {t}: {str(e)}")
                     continue
 
             if squeeze_rows:
@@ -1280,7 +1282,8 @@ with tab5:
                 styled_output = df_results.style.applymap(style_squeeze_signals, subset=["Decision Signal"])
                 st.dataframe(styled_output, use_container_width=True, hide_index=True)
             else:
-                st.info("No data could be populated for the current watchlist batch.")
+                st.info(
+                    "Watchlist download parsed correctly, but no stocks matched data structural validation criteria.")
 
 
         # Start execution flow loop container
