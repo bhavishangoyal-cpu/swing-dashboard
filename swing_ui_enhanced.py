@@ -13,6 +13,24 @@ import streamlit as st
 from google import genai
 import pandas_ta as ta  # <-- Ensure this is imported as 'ta'
 
+
+# --- Live Market Anchor (SPY) ---
+def get_spy_status():
+    spy = yf.Ticker("SPY")
+    data = spy.history(period="1d")
+    current_price = data['Close'].iloc[-1]
+    prev_close = data['Open'].iloc[0] # Using open for a quick daily trend
+    change = current_price - prev_close
+    percent = (change / prev_close) * 100
+    return current_price, change, percent
+
+# Display the Status Bar
+spy_price, spy_change, spy_percent = get_spy_status()
+
+col1, col2, col3 = st.columns(3)
+col1.metric("SPY Live Price", f"${spy_price:.2f}", f"{spy_change:+.2f} ({spy_percent:+.2f}%)")
+col3.info("Market Context: Watch SPY for trend confirmation before executing long signals.")
+
 @st.cache_resource
 @st.cache_resource
 def s4_get_ai_client(): # <-- Ensure NO arguments are inside the brackets here
