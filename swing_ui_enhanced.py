@@ -1270,61 +1270,37 @@ with tab5:
             else:
                 is_multi = len(tab5_tickers) > 1
 
+                # Create counters
+                stats = {"Total": 0, "Failed_EMA": 0, "Failed_Squeeze": 0, "Failed_CMF": 0, "Found": 0}
+
                 for t in tab5_tickers:
+                    stats["Total"] += 1
                     try:
-                        # Extract data per ticker
-                        df_1h = master_1h[t].copy() if is_multi else master_1h.copy()
-                        df_5m = master_5m[t].copy() if is_multi else master_5m.copy()
+                        # ... [Keep your data extraction/calculation logic here] ...
 
-                        df_1h.columns = [str(c).capitalize() for c in df_1h.columns]
-                        df_5m.columns = [str(c).capitalize() for c in df_5m.columns]
+                        # LOGIC CHECK
+                        if not macro_uptrend:
+                            stats["Failed_EMA"] += 1
+                            continue
 
-                        df_1h = df_1h.dropna(subset=['Close'])
-                        df_5m = df_5m.dropna(subset=['Close'])
+                        if not is_squeezed:
+                            stats["Failed_Squeeze"] += 1
+                            continue
 
-                        if len(df_1h) < 50 or len(df_5m) < 25: continue
+                        if not volume_confirmed:
+                            stats["Failed_CMF"] += 1
+                            continue
 
-                        # --- LOGIC ENGINE ---
-                        # Anchor Trend (1H)
-                        df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
-                        macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
+                        # If it passes all, add to list
+                        squeeze_rows.append({...})
+                        stats["Found"] += 1
 
-                        # Squeeze (5M)
-                        df_5m['High_20'] = df_5m['High'].rolling(20).max()
-                        df_5m['Low_20'] = df_5m['Low'].rolling(20).min()
-                        c_last = float(df_5m['Close'].iloc[-1])
-                        high_box = float(df_5m['High_20'].iloc[-1])
-                        low_box = float(df_5m['Low_20'].iloc[-1])
-
-                        box_width_pct = (high_box - low_box) / c_last
-                        is_squeezed = box_width_pct <= 0.012
-                        price_breakout = c_last > high_box
-
-                        # Institutional Fuel (CMF)
-                        df_5m['CMF'] = ta.cmf(df_5m['High'], df_5m['Low'], df_5m['Close'], df_5m['Volume'], length=20)
-                        cmf_val = float(df_5m['CMF'].iloc[-1]) if not np.isnan(df_5m['CMF'].iloc[-1]) else 0.0
-                        volume_confirmed = cmf_val >= 0.10
-
-                        # Decision Signal
-                        if macro_uptrend and is_squeezed and price_breakout and volume_confirmed:
-                            decision = "🔥 STRONG BUY SETUP"
-                        elif macro_uptrend and is_squeezed:
-                            decision = "⏳ Squeezed (Waiting for Breakout)"
-                        else:
-                            decision = "❌ No Squeeze Setup"
-
-                        squeeze_rows.append({
-                            "Company": tab5_watchlist_df[tab5_watchlist_df[ticker_col] == t][name_col].iloc[0],
-                            "Ticker": t,
-                            "Decision": decision,
-                            "Price": round(c_last, 2),
-                            "Squeeze Width": f"{round(box_width_pct * 100, 2)}%",
-                            "CMF": round(cmf_val, 2),
-                            "Stop Loss": round(low_box, 2)
-                        })
-                    except Exception:
+                    except Exception as e:
                         continue
 
+                # DISPLAY THE DEBUGGING INFO
+                st.sidebar.write("### 🔍 Scanner Health (Tab 5)")
+                st.sidebar.write(stats)
             # --- RENDER TABLE OUTSIDE THE LOOP ---
             if squeeze_rows:
                 df_res = pd.DataFrame(squeeze_rows)
