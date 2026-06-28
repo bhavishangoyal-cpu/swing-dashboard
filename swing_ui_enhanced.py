@@ -1226,17 +1226,10 @@ with tab4:
 # ==============================================================================
 with tab5:
     st.header("🎯 High-Effectiveness Intraday Squeeze Scanner")
-    st.caption("Filters for < 1.2% Volatility Squeezes with Multi-Timeframe Institutional Confirmation")
+    st.caption("Filters for Volatility Squeezes with Multi-Timeframe Institutional Confirmation")
 
-    import os
-    import pandas as pd
-    import numpy as np
-    import yfinance as yf
-    import pandas_ta as ta
-
-    # 1. SETUP WATCHLIST
-    if 'WATCHLIST_PATH' not in locals():
-        WATCHLIST_PATH = "watchlist.csv"  # Ensure this variable is defined globally
+    # 1. SETUP WATCHLIST & SLIDERS
+    if 'WATCHLIST_PATH' not in locals(): WATCHLIST_PATH = "watchlist.csv"
 
     if os.path.exists(WATCHLIST_PATH):
         tab5_watchlist_df = pd.read_csv(WATCHLIST_PATH)
@@ -1244,30 +1237,20 @@ with tab5:
         st.error(f"❌ Watchlist file not found: {WATCHLIST_PATH}")
         tab5_watchlist_df = pd.DataFrame()
 
+    # Sidebar Sliders (These define your sensitivity)
+    st.sidebar.subheader("🎛️ Squeeze Scanner Sensitivity")
+    vol_slider = st.sidebar.slider("Squeeze Threshold (%)", 0.5, 5.0, 1.2, 0.1) / 100
+    cmf_slider = st.sidebar.slider("CMF Institutional Threshold", -0.5, 0.5, 0.10, 0.05)
+
     if not tab5_watchlist_df.empty:
-        # Detect ticker column
         ticker_col = next(
             (col for col in ["Yahoo Ticker", "ticker", "Ticker", "Symbol"] if col in tab5_watchlist_df.columns),
             tab5_watchlist_df.columns[0])
         name_col = next(
             (col for col in ["Company Name", "name", "Name", "Company"] if col in tab5_watchlist_df.columns),
             ticker_col)
-
         tab5_tickers = [str(t).strip().upper() for t in tab5_watchlist_df[ticker_col] if
                         pd.notna(t) and str(t).strip().upper() not in ["NAN", "NONE"]]
-        # --- ADD THIS TO TAB 5 ---
-        st.sidebar.subheader("🎛️ Squeeze Scanner Sensitivity")
-        vol_threshold = st.sidebar.slider("Squeeze Threshold (%)", 0.5, 5.0, 1.2, 0.1) / 100
-        cmf_threshold = st.sidebar.slider("CMF Institutional Threshold", -0.5, 0.5, 0.10, 0.05)
-
-        # --- REPLACE YOUR LOGIC WITH THESE VARIABLES ---
-        # OLD: is_squeezed = box_width_pct <= 0.012
-        # NEW:
-        is_squeezed = box_width_pct <= vol_threshold
-
-        # OLD: volume_confirmed = cmf_val >= 0.10
-        # NEW:
-        volume_confirmed = cmf_val >= cmf_threshold
 
         if st.button("🔄 Execute Live Intraday Scan", key="final_squeeze_scan"):
             squeeze_rows = []
@@ -1285,38 +1268,32 @@ with tab5:
 
                 for t in tab5_tickers:
                     try:
-                        # Extract data per ticker
                         df_1h = master_1h[t].copy() if is_multi else master_1h.copy()
                         df_5m = master_5m[t].copy() if is_multi else master_5m.copy()
 
                         df_1h.columns = [str(c).capitalize() for c in df_1h.columns]
                         df_5m.columns = [str(c).capitalize() for c in df_5m.columns]
 
-                        df_1h = df_1h.dropna(subset=['Close'])
-                        df_5m = df_5m.dropna(subset=['Close'])
-
                         if len(df_1h) < 50 or len(df_5m) < 25: continue
 
                         # --- LOGIC ENGINE ---
-                        # Anchor Trend (1H)
                         df_1h['EMA_50'] = df_1h['Close'].ewm(span=50, adjust=False).mean()
                         macro_uptrend = float(df_1h['Close'].iloc[-1]) > float(df_1h['EMA_50'].iloc[-1])
 
-                        # Squeeze (5M)
                         df_5m['High_20'] = df_5m['High'].rolling(20).max()
                         df_5m['Low_20'] = df_5m['Low'].rolling(20).min()
                         c_last = float(df_5m['Close'].iloc[-1])
                         high_box = float(df_5m['High_20'].iloc[-1])
                         low_box = float(df_5m['Low_20'].iloc[-1])
 
+                        # --- USE SLIDER VARIABLES HERE ---
                         box_width_pct = (high_box - low_box) / c_last
-                        is_squeezed = box_width_pct <= 0.012
+                        is_squeezed = box_width_pct <= vol_slider  # Uses slider
                         price_breakout = c_last > high_box
 
-                        # Institutional Fuel (CMF)
                         df_5m['CMF'] = ta.cmf(df_5m['High'], df_5m['Low'], df_5m['Close'], df_5m['Volume'], length=20)
                         cmf_val = float(df_5m['CMF'].iloc[-1]) if not np.isnan(df_5m['CMF'].iloc[-1]) else 0.0
-                        volume_confirmed = cmf_val >= 0.10
+                        volume_confirmed = cmf_val >= cmf_slider  # Uses slider
 
                         # Decision Signal
                         if macro_uptrend and is_squeezed and price_breakout and volume_confirmed:
@@ -1338,16 +1315,11 @@ with tab5:
                     except Exception:
                         continue
 
-            # --- RENDER TABLE OUTSIDE THE LOOP ---
             if squeeze_rows:
                 df_res = pd.DataFrame(squeeze_rows)
-
-                # Sorting
-                df_res["Order"] = df_res["Decision"].map({
-                    "🔥 STRONG BUY SETUP": 0,
-                    "⏳ Squeezed (Waiting for Breakout)": 1,
-                    "❌ No Squeeze Setup": 2
-                }).fillna(3)
+                df_res["Order"] = df_res["Decision"].map(
+                    {"🔥 STRONG BUY SETUP": 0, "⏳ Squeezed (Waiting for Breakout)": 1, "❌ No Squeeze Setup": 2}).fillna(
+                    3)
                 df_res = df_res.sort_values("Order").drop(columns=["Order"])
 
 
@@ -1362,7 +1334,7 @@ with tab5:
 
                 st.dataframe(df_res.style.apply(style_rows, axis=1), use_container_width=True, hide_index=True)
             else:
-                st.info("No squeeze setups detected in current watchlist.")
+                st.info("No squeeze setups detected with current settings. Try widening the sliders!")
 
 # 6. Add your scanner code into tab6
 
