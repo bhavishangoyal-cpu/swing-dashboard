@@ -1411,53 +1411,61 @@ with tab6:
     def scan():
         tickers = list(set([cfg[k] for cfg in sector_map.values() for k in ["core", "bull", "bear"]]))
 
-        # Pull 5 days of history for calculation stability
+        # Pull 5 days of data for the 50-period EMA
         data = yf.download(tickers, period="5d", interval="15m", progress=False)
 
         rows = []
         for label, cfg in sector_map.items():
             core = cfg["core"]
-
-            # Check for data
             if core not in data['Close'].columns: continue
 
+            # Get Price and Volume
             close = data['Close'][core]
             vol = data['Volume'][core]
 
-            # Mathematical indicators
-            vwap = (close * vol).cumsum() / vol.cumsum()
-            z = (close.iloc[-1] - vwap.iloc[-1]) / (close.rolling(20).std().iloc[-1] + 1e-9)
+            # 1. Trend Filter: 50-period EMA (The "Line in the Sand")
+            ema50 = ta.ema(close, length=50)
 
-            # Signal logic
+            # 2. Institutional Flow: VWAP
+            vwap = (close * vol).cumsum() / vol.cumsum()
+
+            # 3. Volume Spike: Must be 1.5x of the 20-period Average
+            vol_sma = ta.sma(vol, length=20)
+            is_vol_spike = vol.iloc[-1] > (vol_sma.iloc[-1] * 1.5)
+
+            # Current Status
+            curr_price = close.iloc[-1]
+            curr_ema = ema50.iloc[-1]
+            curr_vwap = vwap.iloc[-1]
+
+            # Strategy:
+            # Bullish: Price > EMA50 (Trend) AND Price > VWAP (Strength) AND Vol Spike
+            # Bearish: Price < EMA50 (Trend) AND Price < VWAP (Weakness) AND Vol Spike
+
             signal = "⏳ MONITORING"
-            if z < -2.0:
-                signal = f"🔥 BUY LONG: {cfg['bull']}"
-            elif z > 2.0:
-                signal = f"🚨 BUY SHORT: {cfg['bear']}"
+
+            if curr_price > curr_ema and curr_price > curr_vwap and is_vol_spike:
+                signal = f"🚀 TREND LONG: {cfg['bull']}"
+            elif curr_price < curr_ema and curr_price < curr_vwap and is_vol_spike:
+                signal = f"📉 TREND SHORT: {cfg['bear']}"
 
             rows.append({
                 "Sector": label,
-                "Bull": cfg['bull'],
-                "Bear": cfg['bear'],
-                "Price": f"${close.iloc[-1]:.2f}",
-                "Z-Score": round(z, 2),
+                "Price": f"${curr_price:.2f}",
+                "Trend": "Bullish" if curr_price > curr_ema else "Bearish",
                 "ACTION": signal
             })
 
         if rows:
             df = pd.DataFrame(rows)
 
-            # Define the styling function
-            def highlight_buys(val):
-                if "BUY LONG" in str(val):
-                    return 'background-color: #004d26; color: #00FFCC; font-weight: bold'
+            # Styling for high-visibility
+            def highlight_signals(val):
+                if "TREND LONG" in str(val): return 'background-color: #004d26; color: #00FFCC; font-weight: bold'
+                if "TREND SHORT" in str(val): return 'background-color: #8b0000; color: #FF9999; font-weight: bold'
                 return ''
 
-            # Apply style using 'map' instead of 'applymap'
-            styled_df = df.style.map(highlight_buys, subset=['ACTION'])
-
-            # Display using st.dataframe
+            styled_df = df.style.map(highlight_signals, subset=['ACTION'])
             st.dataframe(styled_df, use_container_width=True)
         else:
             st.warning("Scanner calibrating...")
-    scan()
