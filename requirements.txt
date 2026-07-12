@@ -1,10 +1,8 @@
 streamlit
 yfinance
 pandas
-numpy
-pandas-ta
+numpy>=1.26,<2.0
+pandas-ta-classic
 streamlit-autorefresh
 google-genai
 requests
-numpy>=1.26,<2.0
-pandas-ta-classic
