@@ -1,14 +1,7 @@
 streamlit
 yfinance
-streamlit
-yfinance
-pandas
-plotly
-streamlit-autorefresh
-google-genai
-plotly
-streamlit
 pandas
 numpy
-yfinance
+streamlit-autorefresh
 pandas-ta
+google-genai
