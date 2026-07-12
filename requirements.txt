@@ -1,8 +1,8 @@
-streamlit==1.59.1
+streamlit
 yfinance
 pandas
 numpy
-pandas-ta==0.4.71b0
-streamlit-autorefresh==1.0.1
+pandas-ta
+streamlit-autorefresh
 google-genai
 requests
