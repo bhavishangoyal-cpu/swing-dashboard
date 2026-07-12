@@ -12,7 +12,8 @@ import os
 import streamlit as st
 from google import genai
 import pandas_ta as ta  # <-- Ensure this is imported as 'ta'
-
+import faulthandler
+faulthandler.enable()
 
 
 # 1. Fetch and Clean Data
