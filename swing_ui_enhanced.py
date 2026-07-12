@@ -11,7 +11,7 @@ from google.genai import types
 import os
 import streamlit as st
 from google import genai
-import pandas_ta as ta  # <-- Ensure this is imported as 'ta'
+
 
 
 
