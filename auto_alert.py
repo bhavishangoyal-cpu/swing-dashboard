@@ -1,30 +1,26 @@
-from ib_insync import IB, Stock, MarketOrder, util
+from ib_insync import IB, Stock, MarketOrder, LimitOrder, util
 import pandas as pd
+import numpy as np
 from datetime import datetime, timezone
 import winsound
-from ib_insync import MarketOrder, LimitOrder
 
+# --- Core Settings ---
 SYMBOL = 'TQQQ'
-PERIOD = 14
-BAR_SIZE = '15 secs'
-HISTORY_DURATION = '7200 S'
+BAR_SIZE = '5 mins'  # Switched to a standard swing/intraday compression timeframe
+HISTORY_DURATION = '2 D'  # Duration to calculate short-term indicators cleanly
 TRADE_QTY = 100
 
 IB_HOST = '127.0.0.1'
 IB_PORT = 7497
 CLIENT_ID = 3
-MARKET_DATA_TYPE = 3
+MARKET_DATA_TYPE = 3  # Delayed = 3, Live = 1
 
-HARD_STOP_LOSS_PCT = -0.0010
-TARGET1_PCT = 0.0040   # Sell 50% at +0.4%
-TARGET2_PCT = 0.0070   # Sell remaining at +0.7%
-
-MIN_ADX_FOR_ENTRY = 20
-MIN_DI_PLUS = 25
-MIN_DI_SPREAD = 10
-MAX_HOLD_SECONDS = 900
-TRAIL_ACTIVATE = 0.0005
-TRAIL_PULLBACK = 0.0001
+# --- Risk Management Settings ---
+HARD_STOP_LOSS_PCT = -0.0010  # Reduced to 1.0% to support a wider intraday swing structure
+TARGET1_PCT = 0.005  # Sell 50% at +1.5%
+TARGET2_PCT = 0.010  # Sell remaining at +3.0%
+TRAIL_ACTIVATE = 0.003  # Trailing activates at +0.8% profit
+TRAIL_PULLBACK = 0.001  # Trail distance
 
 ib = None
 contract = None
@@ -32,58 +28,98 @@ contract = None
 state = {
     'df': pd.DataFrame(),
     'order_pending': False,
+    'order_pending_since': None,   # <-- new
     'buy_price': None,
     'peak_pnl_pct': 0.0,
     'entry_time': None,
     'sold_target1': False,
-    'sold_target2': False,        # ADDED
-    'last_exit_reason': None,     # ADDED
-    'last_exit_price': 0.0        # ADDED
+    'sold_target2': False,
+    'last_direction': 0,
+    'last_exit_reason': None,
+    'last_exit_price': 0.0
 }
 
-def wilder_smooth(series, n):
-    smoothed = series.copy()
-    smoothed.iloc[n-1] = series.iloc[:n].mean()
-    for i in range(n, len(series)):
-        smoothed.iloc[i] = (smoothed.iloc[i-1] * (n - 1) + series.iloc[i]) / n
-    return smoothed
-
-def calculate_indicators(df, period=14):
+def calculate_ttm_squeeze(df, period=20, bb_mult=2.0, kc_mult=1.5):
+    """Calculates John Carter's TTM Squeeze parameters using standard retail math."""
     df = df.copy()
-    for col in ('high', 'low', 'close', 'volume'):
+    for col in ('high', 'low', 'close'):
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
+    close = df['close']
     high = df['high']
     low = df['low']
-    close = df['close']
-    volume = df['volume']
 
-    tr = pd.concat([high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()], axis=1).max(axis=1)
+    # 1. Bollinger Bands
+    sma = close.rolling(window=period).mean()
+    std_dev = close.rolling(window=period).std()
+    df['bb_upper'] = sma + (bb_mult * std_dev)
+    df['bb_lower'] = sma - (bb_mult * std_dev)
 
-    up_move = high - high.shift(1)
-    down_move = low.shift(1) - low
+    # 2. Keltner Channels (using Wilder's style ATR calculation)
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.rolling(window=period).mean()
 
-    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
-    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+    df['kc_upper'] = sma + (kc_mult * atr)
+    df['kc_lower'] = sma - (kc_mult * atr)
 
-    atr = wilder_smooth(tr, period)
-    psm = wilder_smooth(plus_dm, period)
-    msm = wilder_smooth(minus_dm, period)
+    # 3. Squeeze Condition: Red dot if Bollinger Bands are inside Keltner Channels
+    df['squeeze_on'] = (df['bb_upper'] < df['kc_upper']) & (df['bb_lower'] > df['kc_lower'])
 
-    plus_di = 100 * psm / atr.replace(0, 1e-9)
-    minus_di = 100 * msm / atr.replace(0, 1e-9)
+    # 4. Momentum Histogram using Linear Regression of Price against High/Low/SMA midpoint
+    highest_high = high.rolling(window=period).max()
+    lowest_low = low.rolling(window=period).min()
+    donchian_midpoint = (highest_high + lowest_low) / 2
+    df_midpoint = (donchian_midpoint + sma) / 2
 
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, 1e-9)
-    adx = wilder_smooth(dx, period)
+    fit_y = close - df_midpoint
+    # Basic linear regression approximation for standard indicator histogram
+    x = np.arange(period)
 
-    df['DI+'] = plus_di
-    df['DI-'] = minus_di
-    df['ADX'] = adx
+    def get_slope(y_series):
+        if len(y_series) < period or y_series.isnull().any():
+            return 0.0
+        return np.polyfit(x, y_series, 1)[0]
 
-    valid_vol = volume.clip(lower=0)
-    df['VWAP'] = (close * valid_vol).cumsum() / valid_vol.cumsum().replace(0, 1e-9)
-
+    df['histogram'] = fit_y.rolling(window=period).apply(get_slope, raw=False)
     return df
+
+
+def check_dr_paul_macro_filter():
+    """Fetches Daily data to implement Dr. David Paul's 200-day SMA Bull Regime rule."""
+    try:
+        daily_bars = ib.reqHistoricalData(
+            contract,
+            endDateTime='',
+            durationStr='300 D',
+            barSizeSetting='1 day',
+            whatToShow='TRADES',
+            useRTH=True,
+            keepUpToDate=False
+        )
+        if not daily_bars:
+            return False
+
+        df_daily = util.df(daily_bars)
+        close_series = pd.to_numeric(df_daily['close'], errors='coerce')
+
+        if len(close_series) < 200:
+            print("⚠️ Insufficient daily history for Dr. Paul's 200 SMA Filter.")
+            return False
+
+        sma_200 = close_series.rolling(window=200).mean().iloc[-1]
+        current_daily_close = close_series.iloc[-1]
+
+        is_bull_regime = current_daily_close > sma_200
+        print(
+            f"📋 Macro Check | Current Price: {current_daily_close:.2f} | 200 Day SMA: {sma_200:.2f} | Bull Regime: {is_bull_regime}")
+        return is_bull_regime
+    except Exception as e:
+        print(f"❌ Error computing Macro Filter: {e}")
+        return False
+
 
 def get_position_info():
     try:
@@ -95,57 +131,69 @@ def get_position_info():
     except:
         return 0, 0.0
 
+
 def play_trade_alert(side):
     if side.upper() == 'BUY':
-        winsound.Beep(1000, 500)
+        winsound.Beep(1200, 400)
     else:
-        winsound.Beep(500, 500)
+        winsound.Beep(600, 400)
 
 
 def submit_order(action, qty, limit_price=None, note=''):
     qty_held, _ = get_position_info()
 
-    # Save exit info if selling
     if action == 'SELL':
         state['last_exit_reason'] = note
-        state['last_exit_price'] = get_position_info()[1]  # capture exit price
+        state['last_exit_price'] = get_position_info()[1]
 
     if action == 'SELL' and qty_held <= 0:
         print("🛑 SHORTING BLOCKED")
         return
 
-    # Create the order object (Limit OR Market)
     if limit_price is not None:
-        order = LimitOrder(action, qty, limit_price, tif='DAY')
+        order = LimitOrder(action, qty, round(limit_price, 2), tif='DAY')
         print(f"📡 Sending {action} {qty} LIMIT @ {limit_price:.2f} ({note})")
     else:
         order = MarketOrder(action, qty, tif='DAY')
         print(f"📡 Sending {action} {qty} MARKET ({note})")
 
     state['order_pending'] = True
-
-    # Place the order using the 'order' object created above
+    state['order_pending_since'] = pd.Timestamp.now()
     trade = ib.placeOrder(contract, order)
-    print(f"📡 Sending {action} order for {qty} shares...")
 
     def on_status(trade_):
         status = trade_.orderStatus.status
         if status == 'Filled':
             print(f"✅ ORDER FILLED [{note}]: {action} {qty} @ {trade_.orderStatus.avgFillPrice}")
-            play_trade_alert(action)
-            # Reset states on BUY
-            if action == 'BUY':
+            new_qty_held, _ = get_position_info()
+
+            if note == 'TTM_Squeeze_Macro_Confirmed':
                 state['buy_price'] = trade_.orderStatus.avgFillPrice
                 state['peak_pnl_pct'] = 0.0
-                state['entry_time'] = datetime.now(timezone.utc)
+                state['last_direction'] = 1 if new_qty_held > 0 else -1
                 state['sold_target1'] = False
                 state['sold_target2'] = False
+            elif new_qty_held == 0:
+                state['buy_price'] = None
+                state['peak_pnl_pct'] = 0.0
+                state['last_direction'] = 0
+                state['sold_target1'] = False
+                state['sold_target2'] = False
+
             state['order_pending'] = False
+            state['order_pending_since'] = None  # <-- new
         elif status in ('Cancelled', 'ApiCancelled', 'Inactive'):
             state['order_pending'] = False
+            state['order_pending_since'] = None  # <-- new
 
     trade.statusEvent += on_status
     ib.sleep(1.0)
+
+    # --- Safety net (new) ---
+    if trade.orderStatus.status in ('Filled', 'Cancelled', 'ApiCancelled', 'Inactive'):
+        state['order_pending'] = False
+        state['order_pending_since'] = None  # <-- new
+
 def process_latest_data(bars, ticker):
     now_price = ticker.last if ticker.last > 0 else ticker.close
     try:
@@ -154,213 +202,152 @@ def process_latest_data(bars, ticker):
 
         df = df.set_index('date')
         df.index = pd.to_datetime(df.index, utc=True)
-        df = calculate_indicators(df, PERIOD)
+        df = calculate_ttm_squeeze(df)
         state['df'] = df
-
 
         qty_held, avg_cost = get_position_info()
         effective_buy_price = state['buy_price'] if state['buy_price'] is not None else avg_cost
 
-        if len(df) < 4:
-            print("Warming up...")
+        if len(df) < 25:
+            print("Warming up indicators...")
             return
 
         curr = df.iloc[-2]
         prev = df.iloc[-3]
 
-        adx = curr['ADX']
-        di_plus = curr['DI+']
-        di_minus = curr['DI-']
-        vwap = curr['VWAP']
+        pnl_pct = 0.0  # stays 0 while flat
 
-        print(f"{pd.Timestamp.now().strftime('%H:%M:%S')} | Pr: {now_price:.2f} | VWAP: {vwap:.2f} | "
-              f"ADX: {adx:.1f} | DI+: {di_plus:.1f} | DI-: {di_minus:.1f} | Qty: {qty_held}")
+        # --- Live PnL Log ---
+        if qty_held != 0:
+            direction = 1 if qty_held > 0 else -1
+            pnl_pct = direction * ((now_price - effective_buy_price) / effective_buy_price)
+            pnl_dollars = direction * (now_price - effective_buy_price) * abs(qty_held)
+            pnl_string = (f"PROFIT: +${pnl_dollars:.2f} (+{pnl_pct * 100:.2f}%)"
+                          if pnl_dollars >= 0
+                          else f"LOSS: -${abs(pnl_dollars):.2f} ({pnl_pct * 100:.2f}%)")
+            print(f"{pd.Timestamp.now().strftime('%H:%M:%S')} | Entry: ${effective_buy_price:.2f} | "
+                  f"Pr: ${now_price:.2f} | Qty: {qty_held} | {pnl_string} | Pending: {state['order_pending']}")
+        else:
+            print(f"{pd.Timestamp.now().strftime('%H:%M:%S')} | Pr: ${now_price:.2f} | Qty: 0 | FLAT | "
+                  f"SQZ: {'RED' if curr['squeeze_on'] else 'GRN'} (Hist: {curr['histogram']:.4f})")
 
-        if state['order_pending']: return
-        if state['order_pending']: return
+            # --- Circuit breaker: force-clear a stuck pending flag ---
+            if state['order_pending'] and state['order_pending_since']:
+                stuck_seconds = (pd.Timestamp.now() - state['order_pending_since']).total_seconds()
+                if stuck_seconds > 30:
+                    print(f"⚠️ order_pending stuck for {stuck_seconds:.0f}s — force clearing.")
+                    state['order_pending'] = False
+                    state['order_pending_since'] = None
 
+            if state['order_pending']:
+                return
+
+        # --- ENTRY CONTEXT (FLAT POSITION) ---
         if qty_held == 0:
+            state['peak_pnl_pct'] = 0.0
+            state['last_direction'] = 0
 
-            # VWAP filter
-            price_above_vwap = curr['close'] > vwap
-            vwap_distance = (curr['close'] - vwap) / vwap
-            not_extended = vwap_distance < 0.003
+            squeeze_fired = (prev['squeeze_on'] == True) and (curr['squeeze_on'] == False)
+            positive_momentum = curr['histogram'] > 0
+            momentum_accelerating = curr['histogram'] > prev['histogram']
 
-            # Momentum
-            bullish_now = (
-                    di_plus > di_minus
-                    and adx >= prev['ADX']
-            )
+            if squeeze_fired and positive_momentum and momentum_accelerating:
+                print("🎯 Squeeze fired visually on intraday chart. Evaluating Macro Regime filter...")
+                if check_dr_paul_macro_filter():
+                    print("🚀 MACRO BULL REGIME VALIDATED — Entering Position.")
+                    submit_order('BUY', TRADE_QTY, note='TTM_Squeeze_Macro_Confirmed')
+                else:
+                    print("🛑 Entry signal blocked: Asset trading underneath the Daily 200 SMA.")
+            return
 
-            bullish_prev = prev['DI+'] > prev['DI-']
+        # --- EXIT CONTEXT (ACTIVE POSITION) ---
+        current_dir = 1 if qty_held > 0 else -1
+        if state.get('last_direction', 0) != current_dir:
+            state['peak_pnl_pct'] = 0.0
+        state['last_direction'] = current_dir
 
-            strong = (
-                    di_plus >= MIN_DI_PLUS
-                    and (di_plus - di_minus) >= MIN_DI_SPREAD
-            )
+        buffer = 0.05  # Slippage cushion for order execution
 
-            # Candle confirmation
-            bullish_candle = curr['close'] > curr['open']
+        # 1. Hard Stop Loss
+        if pnl_pct <= HARD_STOP_LOSS_PCT:
+            print("🛑 HARD STOP LOSS TRIGGERED | Exiting Entire Position.")
+            exit_action = 'SELL' if qty_held > 0 else 'BUY'
+            submit_order(exit_action, abs(qty_held),
+                         limit_price=(now_price - buffer if qty_held > 0 else now_price + buffer),
+                         note='hard_stop')
+            return
 
-            if (
-                    bullish_now
-                    and bullish_prev
-                    and adx >= MIN_ADX_FOR_ENTRY
-                    and strong
-                    and price_above_vwap
-                    and not_extended
-                    and bullish_candle
-            ):
-                print(
-                    f"🎯 ENTRY SIGNAL | "
-                    f"ADX:{adx:.1f} "
-                    f"DI+:{di_plus:.1f} "
-                    f"DI-:{di_minus:.1f} "
-                    f"VWAP:{vwap:.2f}"
-                )
+        # 2. Trailing Stop
+        state['peak_pnl_pct'] = max(state.get('peak_pnl_pct', 0.0), pnl_pct)
+        current_peak = state['peak_pnl_pct']
 
-                submit_order(
-                    'BUY',
-                    TRADE_QTY,
-                    note='VWAP_ADX_momentum'
-                )
-        elif qty_held > 0:
-
-            pnl_pct = (now_price - effective_buy_price) / effective_buy_price
-            state['peak_pnl_pct'] = max(state['peak_pnl_pct'], pnl_pct)
-
-            peak = state['peak_pnl_pct']
-            print(
-                f"📈 Peak: {peak * 100:.2f}% | "
-                f"Current: {pnl_pct * 100:.2f}% | "
-                f"Buy: {effective_buy_price:.2f} | "
-                f"Price: {now_price:.2f}"
-            )
-            buffer = 0.03  # Limit order cushion
-
-            # 1. Hard Stop Loss
-            if pnl_pct <= HARD_STOP_LOSS_PCT:
-                print(
-                    f"🛑 HARD STOP LOSS | "
-                    f"Current: {pnl_pct * 100:.2f}% "
-                    f"Limit: {HARD_STOP_LOSS_PCT * 100:.2f}%"
-                )
-
-                submit_order(
-                    'SELL',
-                    qty_held,
-                    limit_price=now_price - buffer,
-                    note='hard_stop'
-                )
-
+        if current_peak >= TRAIL_ACTIVATE:
+            trail_level = current_peak - TRAIL_PULLBACK
+            if pnl_pct <= trail_level:
+                print(f"🔒 TRAILING STOP TRIGGERED | Peak: {current_peak * 100:.2f}% | "
+                      f"Floor: {trail_level * 100:.2f}% | Current: {pnl_pct * 100:.2f}%")
+                exit_action = 'SELL' if qty_held > 0 else 'BUY'
+                submit_order(exit_action, abs(qty_held), note='trailing')
+                state['peak_pnl_pct'] = 0.0
+                state['last_direction'] = 0
                 return
 
-            # 1. Hard Stop (The floor)
+        # 3. Partial Target 1
+        if not state.get('sold_target1', False) and pnl_pct >= TARGET1_PCT:
+            sell_qty = abs(qty_held) // 2
+            print(f"🎯 TARGET 1 HIT (+{pnl_pct * 100:.2f}%) - Scaling Out 50%.")
+            exit_action = 'SELL' if qty_held > 0 else 'BUY'
+            submit_order(exit_action, sell_qty,
+                         limit_price=(now_price - buffer if qty_held > 0 else now_price + buffer),
+                         note='target1')
+            state['sold_target1'] = True
+            return
 
-            # Momentum failure exit
-            if now_price < vwap and di_plus < di_minus:
-                print(
-                    f"⚠️ VWAP FAILURE EXIT | "
-                    f"Price:{now_price:.2f} VWAP:{vwap:.2f} "
-                    f"DI+:{di_plus:.1f} DI-:{di_minus:.1f}"
-                )
+        # 4. Final Target 2
+        if state.get('sold_target1', False) and not state.get('sold_target2', False) and pnl_pct >= TARGET2_PCT:
+            print(f"💰 TARGET 2 HIT (+{pnl_pct * 100:.2f}%) - Fully closing remaining units.")
+            exit_action = 'SELL' if qty_held > 0 else 'BUY'
+            submit_order(exit_action, abs(qty_held),
+                         limit_price=(now_price - buffer if qty_held > 0 else now_price + buffer),
+                         note='target2')
+            state['sold_target2'] = True
+            return
 
-                submit_order(
-                    'SELL',
-                    qty_held,
-                    limit_price=now_price - buffer,
-                    note='vwap_failure'
-                )
-
-                return
-            # 2. Trailing Stop (Always Active - applies to the full or partial position)
-
-            # 0.0005 represents 0.05%
-
-            # Activate trailing only after trade is profitable
-            # Trailing Stop
-            if peak >= TRAIL_ACTIVATE:
-
-                trail_level = peak - TRAIL_PULLBACK
-
-                if pnl_pct <= trail_level:
-                    print(
-                        f"🔒 TRAILING EXIT | "
-                        f"Peak {peak * 100:.2f}% → "
-                        f"Current {pnl_pct * 100:.2f}%"
-                    )
-
-                    submit_order(
-                        'SELL',
-                        qty_held,
-                        note='trailing'
-                    )
-
-                    return
-            # 3. Target 1 (Sell 50%)
-
-            if not state['sold_target1'] and pnl_pct >= TARGET1_PCT:
-                sell_qty = qty_held // 2
-
-                print(f"🎯 TARGET 1 (+{pnl_pct * 100:.2f}%) - Selling 50%")
-
-                submit_order('SELL', sell_qty, limit_price=now_price - buffer, note='target1')
-
-                state['sold_target1'] = True
-
-                return
-
-            # 4. Target 2 (Sell remaining)
-
-            # Only triggers if Target 1 is already sold
-
-            if state['sold_target1'] and not state['sold_target2'] and pnl_pct >= TARGET2_PCT:
-                print(f"💰 TARGET 2 (+{pnl_pct * 100:.2f}%) - Selling remaining")
-
-                submit_order('SELL', qty_held, limit_price=now_price - buffer, note='target2')
-
-                state['sold_target2'] = True
-
-                return
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error Processing Data Stream: {e}")
 
 if __name__ == '__main__':
     util.logToConsole()
     ib = IB()
-    print("Connecting to IBKR...")
+    print("Connecting to Interactive Brokers...")
     ib.connect(IB_HOST, IB_PORT, clientId=CLIENT_ID)
     ib.reqMarketDataType(MARKET_DATA_TYPE)
 
     contract = Stock(SYMBOL, 'SMART', 'USD')
     ib.qualifyContracts(contract)
 
-    print("Bot started with Scaled Targets (0.4% & 0.7%)...")
+    print(f"Bot successfully structured around TTM Squeeze + 200-Day SMA Macro Filters...")
     ticker = ib.reqMktData(contract)
     ib.sleep(2)
 
     try:
-
         while True:
-
             bars = ib.reqHistoricalData(
                 contract,
-                '',
-                HISTORY_DURATION,
-                BAR_SIZE,
-                'TRADES',
-                useRTH=False,
+                endDateTime='',
+                durationStr=HISTORY_DURATION,
+                barSizeSetting=BAR_SIZE,
+                whatToShow='TRADES',
+                useRTH=True,
                 keepUpToDate=False
             )
 
             if bars:
-                print("Bars loaded:", len(bars))
                 process_latest_data(bars, ticker)
 
-            ib.sleep(2)
+            ib.sleep(5)  # Polling interval slowed down slightly to reflect a cleaner swing chart execution loop
 
     except KeyboardInterrupt:
-        print("Shutting down...")
-
+        print("Shutting down bot safely...")
     finally:
         ib.disconnect()
