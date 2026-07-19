@@ -832,7 +832,7 @@ with tab3:
 # ==============================================================================
 # 📊 TAB 4: 🌙 Overnight Gap Screener
 # ==============================================================================
-with tab8:
+with tab4:
     st.header("🌙 Overnight Gap Screener")
     st.caption("Buy at today's close, sell at tomorrow's open (or first 5-10 min). Target ~2%. "
                "This is a new, independent screener — it does not touch any logic used elsewhere in this app.")
