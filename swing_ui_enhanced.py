@@ -82,7 +82,7 @@ st.title("🎛️ Master Strategy & Scanning Interface")
 # Setup Global Navigation Tabs (Now with Tab 4)
 # Setup Global Navigation Tabs (Expanded with Tab 5)
 # 1. Update the tabs list to include the 6th title
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "🎯 Atharv Swing Scanner (5m/15m)",
     "📈 Goel's Swing Strategy",
     "📊 52-Week High/Low Strategy",
