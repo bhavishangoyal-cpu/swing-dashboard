@@ -645,13 +645,18 @@ def s4n_analyze_single(ticker, name, min_range_pos, rsi_low, rsi_high, min_vol_r
         except Exception:
             earnings_note = "Unknown"
 
-        score = sum([closing_strength_ok, rsi_ok, vol_ok, trend_ok, not earnings_soon])
+        # Closing Strength and Earnings are now hard gates, not just two votes out of five.
+        # This strategy's entry mechanic IS the strong close — a weak close should disqualify
+        # a name outright rather than get outvoted by RSI/volume/trend agreeing on everything else.
+        sub_score = sum([rsi_ok, vol_ok, trend_ok])  # secondary confirmation, out of 3
 
         if earnings_soon:
             decision = "❌ SKIP (Earnings Risk)"
-        elif score >= 4:
+        elif not closing_strength_ok:
+            decision = "❌ SKIP (Weak Close)"
+        elif sub_score == 3:
             decision = "🔥 STRONG CANDIDATE"
-        elif score == 3:
+        elif sub_score == 2:
             decision = "⚠️ WATCH"
         else:
             decision = "❌ SKIP"
@@ -660,7 +665,7 @@ def s4n_analyze_single(ticker, name, min_range_pos, rsi_low, rsi_high, min_vol_r
             "Ticker": ticker,
             "Company": name,
             "Decision": decision,
-            "Score": f"{score}/5",
+            "Score": f"{sub_score}/3",
             "Close": round(c_last, 2),
             "Closing Strength %": round(range_pos * 100, 1),
             "RSI": round(rsi_last, 1),
@@ -693,8 +698,11 @@ def s4n_run_scan(watchlist_df, min_range_pos, rsi_low, rsi_high, min_vol_ratio, 
         return pd.DataFrame()
 
     df = pd.DataFrame(rows)
-    rank_map = {"🔥 STRONG CANDIDATE": 0, "⚠️ WATCH": 1, "❌ SKIP (Earnings Risk)": 2, "❌ SKIP": 3}
-    df["_rank"] = df["Decision"].map(rank_map).fillna(4)
+    rank_map = {
+        "🔥 STRONG CANDIDATE": 0, "⚠️ WATCH": 1,
+        "❌ SKIP (Earnings Risk)": 2, "❌ SKIP (Weak Close)": 3, "❌ SKIP": 4,
+    }
+    df["_rank"] = df["Decision"].map(rank_map).fillna(5)
     df = df.sort_values("_rank").drop(columns=["_rank"])
     return df
 
