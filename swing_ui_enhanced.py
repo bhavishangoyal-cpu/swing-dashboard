@@ -3,46 +3,52 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import os
-import time
-from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from streamlit_autorefresh import st_autorefresh
 from google import genai
 from google.genai import types
-import os
-import streamlit as st
-from google import genai
 import pandas_ta as ta  # <-- Ensure this is imported as 'ta'
 import faulthandler
 faulthandler.enable()
 
+# ==============================================================================
+# 1. GLOBAL APP CONFIGURATION & INITIALIZATION (Must be at the absolute top)
+# ==============================================================================
+st.set_page_config(page_title="Master Trading Suite", layout="wide")
+st.title("🎛️ Master Strategy & Scanning Interface")
 
-# 1. Fetch and Clean Data
-spy_data = yf.download("SPY", period="1mo", interval="1d", progress=False)
+WATCHLIST_PATH = "watchlist.csv"
+REQUIRED_COLS = {"Open", "High", "Low", "Close", "Volume"}
+MAX_WORKERS = 8  # tune down if Yahoo Finance starts rate-limiting you
 
-# Clean multi-index columns if present
-if isinstance(spy_data.columns, pd.MultiIndex):
-    spy_data.columns = spy_data.columns.get_level_values(0)
 
-# Extract 'Close' series safely
+# ==============================================================================
+# MARKET CONTEXT (SPY) — cached so it doesn't hit the network every rerun
+# ==============================================================================
+@st.cache_data(ttl=300, show_spinner=False)
+def load_spy_snapshot():
+    df = yf.download("SPY", period="1mo", interval="1d", progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df
+
+
+spy_data = load_spy_snapshot()
 close = spy_data['Close']
 if isinstance(close, pd.DataFrame):
     close = close.iloc[:, 0]
 
-# 2. Perform Calculations
 if len(close) >= 20:
     spy_price = float(close.iloc[-1])
     prev_close = float(close.iloc[-2])
     spy_change = spy_price - prev_close
     spy_percent = (spy_change / prev_close) * 100
 
-    # Moving Average & Z-Score
     mean = close.rolling(window=20).mean()
     std = close.rolling(window=20).std()
-
     z_score_series = (close - mean) / std
     latest_z_score = float(z_score_series.iloc[-1])
 
-    # Market Health Logic
     if latest_z_score < -1.5:
         market_status = "GOOD TIME (Oversold)"
     elif latest_z_score > 1.5:
@@ -50,47 +56,35 @@ if len(close) >= 20:
     else:
         market_status = "STABLE"
 
-    # 3. Display
     st.subheader("Market Context: S&P 500 (SPY)")
     col1, col2, col3 = st.columns(3)
     col1.metric("SPY Price", f"${spy_price:.2f}", f"{spy_change:+.2f} ({spy_percent:+.2f}%)")
     col2.metric("SPY Z-Score", f"{latest_z_score:.2f}")
     col3.info(f"Market Sentiment: {market_status}")
-
     st.divider()
 else:
     st.warning("Gathering market data...")
 
+
 @st.cache_resource
-@st.cache_resource
-def s4_get_ai_client(): # <-- Ensure NO arguments are inside the brackets here
+def s4_get_ai_client():
     api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if api_key:
         try:
-            # Forcing the key to the OS environment allows the SDK to structure headers correctly
             os.environ["GEMINI_API_KEY"] = api_key
             return genai.Client()
         except Exception:
             return None
     return None
-# ==============================================================================
-# 1. GLOBAL APP CONFIGURATION & INITIALIZATION (Must be at the absolute top)
-# ==============================================================================
-st.set_page_config(page_title="Master Trading Suite", layout="wide")
-st.title("🎛️ Master Strategy & Scanning Interface")
 
-# Setup Global Navigation Tabs (Now with Tab 4)
-# Setup Global Navigation Tabs (Expanded with Tab 5)
-# 1. Update the tabs list to include the 6th title
+
+# Setup Global Navigation Tabs
 tab1, tab2, tab3, tab4 = st.tabs([
     "🎯 Atharv Swing Scanner (5m/15m)",
     "📈 Goel's Swing Strategy",
     "📊 52-Week High/Low Strategy",
     "🌙 Overnight Gap Screener"
 ])
-
-WATCHLIST_PATH = "watchlist.csv"
-REQUIRED_COLS = {"Open", "High", "Low", "Close", "Volume"}
 
 
 # ==============================================================================
@@ -170,7 +164,9 @@ def s1_get_last_values(df: pd.DataFrame):
     }
 
 
+@st.cache_data(ttl=120, show_spinner=False)
 def s1_safe_history(ticker: str, interval: str, period: str = "7d") -> pd.DataFrame | None:
+    """Cached — intraday data is short-lived so TTL is short (2 min)."""
     try:
         stock = yf.Ticker(ticker)
         df = stock.history(period=period, interval=interval, prepost=False)
@@ -277,6 +273,48 @@ def s1_decision_color(val: str) -> str:
 
 def s1_confirmed_color(val: str) -> str:
     return "background-color:#27AE60;color:white;" if val == "CONFIRMED" else "background-color:#AAB7B8;color:black;"
+
+
+def s1_run_interval_scan(watchlist_df: pd.DataFrame, interval: str) -> pd.DataFrame:
+    """Fetches/analyzes every ticker for one interval in parallel instead of one-by-one."""
+    rows = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_map = {
+            executor.submit(s1_analyze_ticker, row["Yahoo Ticker"], interval): row
+            for _, row in watchlist_df.iterrows()
+        }
+        for future in as_completed(future_map):
+            row = future_map[future]
+            t = row["Yahoo Ticker"]
+            company_name = row["Company Name"]
+            try:
+                res = future.result()
+            except Exception:
+                res = {"status": "NO_DATA"}
+
+            if res.get("status") != "OK":
+                rows.append({
+                    "Ticker": t, "Company (Ticker)": f"{company_name} ({t})", "Decision": "NO ENTER",
+                    "Trend": "", "Close": "", "Support": "", "Resistance": "", "RSI": "",
+                    "LongScore": "", "ShortScore": "", "CONFIRMED": "", "Strength": 0
+                })
+            else:
+                rows.append({
+                    "Ticker": res["ticker"], "Company (Ticker)": f"{company_name} ({res['ticker']})",
+                    "Decision": res["decision"], "Trend": res["trend"], "Close": round(res["close"], 2),
+                    "Support": round(res["support"], 2), "Resistance": round(res["resistance"], 2),
+                    "RSI": round(res["rsi"], 1), "LongScore": res["long_score"],
+                    "ShortScore": res["short_score"], "CONFIRMED": res["confirmed"], "Strength": res["strength"],
+                })
+
+    df_res = pd.DataFrame(rows)
+    df_res["Rank"] = df_res["Decision"].map({"BUY": 0, "WAIT": 1, "NO ENTER": 2}).fillna(3)
+    df_res["ConfRank"] = df_res["CONFIRMED"].map({"CONFIRMED": 0, "NOT CONFIRMED": 1}).fillna(2)
+    df_res = df_res.sort_values(
+        ["Rank", "ConfRank", "Strength", "LongScore"],
+        ascending=[True, True, False, False]
+    ).drop(columns=["Rank", "ConfRank"])
+    return df_res
 
 
 # ==============================================================================
@@ -390,7 +428,9 @@ def s2_enhanced_signal(df):
         return "ERROR", str(e), "N/A"
 
 
+@st.cache_data(ttl=900, show_spinner=False)
 def s2_fetch_safe(ticker):
+    """Cached — 1y of daily data doesn't need to be re-downloaded every rerun."""
     try:
         df = yf.download(ticker, period="1y", progress=False, auto_adjust=True)
         if isinstance(df.columns, pd.MultiIndex): df.columns = [col[0] for col in df.columns]
@@ -440,6 +480,50 @@ def s2_rating_from_score(score):
     return "C (Weak)"
 
 
+def s2_analyze_single(ticker: str, ticker_to_name: dict) -> dict:
+    df_s2 = s2_fetch_safe(ticker)
+    if df_s2.empty:
+        return {
+            'Ticker': ticker, 'Company Name': ticker_to_name.get(ticker, ticker), 'Enhanced Signal': 'NO DATA',
+            'Current Price': '-', 'Entry Price': '-', 'Stop Loss (ATR)': '-', 'Target 2%': '-',
+            'Target 3%': '-', 'Volume Ratio': '-', 'ATR %': '-', 'Score': 0, 'Reason': 'No data', 'VIX Level': '-'
+        }
+
+    df_s2 = s2_add_basic_indicators(df_s2)
+    df_s2 = s2_add_extra_indicators(df_s2)
+    signal, reason, vix_level = s2_enhanced_signal(df_s2)
+    last_row = df_s2.iloc[-1]
+
+    close_p = float(last_row['Close']) if 'Close' in last_row else 0
+    atr_v = float(last_row['ATR']) if 'ATR' in last_row else 0
+    v_ratio = float(last_row['Volume_Ratio']) if 'Volume_Ratio' in last_row else 0
+    a_pct = float(last_row['ATR_Pct']) if 'ATR_Pct' in last_row else 0
+
+    return {
+        'Ticker': ticker, 'Company Name': ticker_to_name.get(ticker, ticker), 'Enhanced Signal': signal,
+        'Current Price': round(close_p, 2) if close_p else "-",
+        'Entry Price': round(close_p, 2) if close_p else "-",
+        'Stop Loss (ATR)': round(close_p - (atr_v * 1.5), 2) if close_p and atr_v else "-",
+        'Target 2%': round(close_p * 1.02, 2) if close_p else "-",
+        'Target 3%': round(close_p * 1.03, 2) if close_p else "-",
+        'Volume Ratio': round(v_ratio, 2) if v_ratio else "-", 'ATR %': round(a_pct, 2) if a_pct else "-",
+        'Score': 0, 'Reason': reason, 'VIX Level': vix_level
+    }
+
+
+def s2_run_scan(watchlist: list, ticker_to_name: dict) -> pd.DataFrame:
+    results_s2 = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [executor.submit(s2_analyze_single, t, ticker_to_name) for t in watchlist]
+        for f in as_completed(futures):
+            results_s2.append(f.result())
+
+    df_results_s2 = pd.DataFrame(results_s2)
+    df_results_s2['Score'] = df_results_s2.apply(s2_score_signal, axis=1)
+    df_results_s2['Rating'] = df_results_s2['Score'].apply(s2_rating_from_score)
+    return df_results_s2
+
+
 # ==============================================================================
 # 5. STRATEGY 3: 52-WEEK DROP ANALYZER UTILITIES
 # ==============================================================================
@@ -456,7 +540,7 @@ def s3_download_single_ticker(ticker: str):
 
 
 # ==============================================================================
-# 6. STRATEGY 4: ATHARV ENHANCED SCANNER UTILITIES (Your exact functions mapped)
+# 6. STRATEGY 4 (LEGACY, UNUSED): kept only because other code may reference it
 # ==============================================================================
 def s4_get_last_values(df: pd.DataFrame):
     return {
@@ -486,117 +570,133 @@ def s4_detect_support_resistance(df: pd.DataFrame, lookback: int = 40):
     return support, resistance
 
 
-def s4_analyze_ticker(ticker: str, interval: str) -> dict:
-    data = s1_safe_history(ticker, interval=interval, period="7d")
-    if data is None or len(data) < 60:
-        return {"ticker": ticker, "status": "NO_DATA", "interval": interval}
+# ==============================================================================
+# 7. STRATEGY 5: OVERNIGHT GAP SCREENER UTILITIES
+# ==============================================================================
+@st.cache_data(ttl=300, show_spinner=False)
+def s4n_fetch_daily(ticker: str):
+    stock = yf.Ticker(ticker)
+    df = stock.history(period="3mo", interval="1d", prepost=False)
+    return df
 
-    df = s1_compute_indicators(data).dropna()
-    if len(df) < 30:
-        return {"ticker": ticker, "status": "NO_DATA", "interval": interval}
 
-    vals = s4_get_last_values(df)
+@st.cache_data(ttl=3600, show_spinner=False)
+def s4n_fetch_earnings(ticker: str):
+    """Earnings dates barely change intraday — cache for an hour."""
+    stock = yf.Ticker(ticker)
+    try:
+        return stock.earnings_dates
+    except Exception:
+        return None
 
-    trend = "UP" if (vals["c_last"] > vals["ema20_last"] > vals["ema50_last"]) else "DOWN"
 
-    support, resistance = s4_detect_support_resistance(df)
+def s4n_color(val):
+    if "STRONG" in str(val):
+        return "background-color:#2ECC71;color:black;"
+    elif "WATCH" in str(val):
+        return "background-color:#F1C40F;color:black;"
+    elif "SKIP" in str(val):
+        return "background-color:#E74C3C;color:white;"
+    return ""
 
-    near_support = (support > 0) and (abs(vals["c_last"] - support) / support <= 0.02)
-    near_resistance = (resistance > 0) and (abs(vals["c_last"] - resistance) / resistance <= 0.02)
 
-    rsi_up = vals["rsi_last"] > vals["rsi_prev"]
-    rsi_down = vals["rsi_last"] < vals["rsi_prev"]
+def s4n_analyze_single(ticker, name, min_range_pos, rsi_low, rsi_high, min_vol_ratio, exclude_earnings_days):
+    try:
+        df = s4n_fetch_daily(ticker)
+        if df is None or df.empty or len(df) < 25:
+            return None
+        df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
 
-    bull_eng = (vals["c_prev"] < vals["o_prev"]) and (vals["c_last"] > vals["o_last"]) and (
-                vals["c_last"] >= vals["o_prev"]) and (vals["o_last"] <= vals["c_prev"])
-    bear_eng = (vals["c_prev"] > vals["o_prev"]) and (vals["c_last"] < vals["o_last"]) and (
-                vals["c_last"] <= vals["o_prev"]) and (vals["o_last"] >= vals["c_prev"])
+        df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
+        df["RSI14"] = s1_rsi(df["Close"])
+        df["VolAvg20"] = df["Volume"].rolling(20).mean()
 
-    body = abs(vals["c_last"] - vals["o_last"])
-    rng = vals["h_last"] - vals["l_last"]
-    is_hammer = (rng > 0) and ((min(vals["o_last"], vals["c_last"]) - vals["l_last"]) > 2 * body) and (body / rng < 0.4)
+        last = df.iloc[-1]
+        c_last = float(last["Close"])
+        h_last = float(last["High"])
+        l_last = float(last["Low"])
+        v_last = float(last["Volume"])
+        rsi_last = float(df["RSI14"].iloc[-1])
+        vol_avg20 = float(df["VolAvg20"].iloc[-1])
+        ema20_last = float(df["EMA20"].iloc[-1])
 
-    vol_ok = (not np.isnan(vals["vol_avg20"])) and (vals["vol_avg20"] > 0) and (
-                vals["v_last"] > 1.5 * vals["vol_avg20"])
+        day_range = h_last - l_last
+        range_pos = (c_last - l_last) / day_range if day_range > 0 else 0.5
 
-    long_score = sum([
-        trend == "UP",
-        near_support,
-        (28 <= vals["rsi_last"] <= 70) and rsi_up,
-        bull_eng or is_hammer,
-        vol_ok,
-        vals["day_range_pos"] >= 0.75,
-    ])
+        closing_strength_ok = range_pos >= min_range_pos
+        rsi_ok = rsi_low <= rsi_last <= rsi_high
+        vol_ok = (not np.isnan(vol_avg20)) and vol_avg20 > 0 and v_last >= min_vol_ratio * vol_avg20
+        trend_ok = c_last > ema20_last
 
-    short_score = sum([
-        trend == "DOWN",
-        near_resistance,
-        (55 <= vals["rsi_last"] <= 75) and rsi_down,
-        bear_eng,
-        vol_ok,
-    ])
+        earnings_soon = False
+        earnings_note = "None found"
+        try:
+            edates = s4n_fetch_earnings(ticker)
+            if edates is not None and not edates.empty:
+                now_ts = pd.Timestamp.now(tz=edates.index.tz) if edates.index.tz else pd.Timestamp.now()
+                upcoming = edates.index[edates.index >= now_ts]
+                if len(upcoming) > 0:
+                    days_out = (upcoming[0] - now_ts).days
+                    if days_out <= exclude_earnings_days:
+                        earnings_soon = True
+                        earnings_note = f"⚠️ In {days_out}d"
+                    else:
+                        earnings_note = f"In {days_out}d"
+        except Exception:
+            earnings_note = "Unknown"
 
-    if long_score >= 4:
-        decision = "BUY"
-    elif short_score >= 4:
-        decision = "SHORT"
-    elif (trend in ["UP", "DOWN"]) and (near_support or near_resistance):
-        decision = "WAIT"
-    else:
-        decision = "NO ENTER"
+        score = sum([closing_strength_ok, rsi_ok, vol_ok, trend_ok, not earnings_soon])
 
-    confirmed = (
-            (decision == "BUY") and
-            (trend == "UP") and
-            (long_score >= 3) and
-            (28 <= vals["rsi_last"] <= 70) and
-            near_support and
-            (vals["v_last"] > 1.5 * vals["vol_avg20"])
-    )
+        if earnings_soon:
+            decision = "❌ SKIP (Earnings Risk)"
+        elif score >= 4:
+            decision = "🔥 STRONG CANDIDATE"
+        elif score == 3:
+            decision = "⚠️ WATCH"
+        else:
+            decision = "❌ SKIP"
 
-    confirmed_label = "CONFIRMED" if confirmed else "NOT CONFIRMED"
+        return {
+            "Ticker": ticker,
+            "Company": name,
+            "Decision": decision,
+            "Score": f"{score}/5",
+            "Close": round(c_last, 2),
+            "Closing Strength %": round(range_pos * 100, 1),
+            "RSI": round(rsi_last, 1),
+            "Vol vs Avg": round(v_last / vol_avg20, 2) if vol_avg20 else "-",
+            "Trend": "UP" if trend_ok else "DOWN",
+            "Earnings": earnings_note,
+            "Suggested Target (+2%)": round(c_last * 1.02, 2),
+            "Suggested Stop (-1.5%)": round(c_last * 0.985, 2),
+        }
+    except Exception:
+        return None
 
-    strength = 0
-    if vals["c_last"] > vals["ema20_last"] > vals["ema50_last"]:
-        strength += 2
-    elif vals["ema20_last"] > vals["ema50_last"]:
-        strength += 1
 
-    if 35 <= vals["rsi_last"] <= 50:
-        strength += 2
-    elif 28 <= vals["rsi_last"] <= 70:
-        strength += 1
+def s4n_run_scan(watchlist_df, min_range_pos, rsi_low, rsi_high, min_vol_ratio, exclude_earnings_days) -> pd.DataFrame:
+    rows = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [
+            executor.submit(
+                s4n_analyze_single, row["Yahoo Ticker"], row["Company Name"],
+                min_range_pos, rsi_low, rsi_high, min_vol_ratio, exclude_earnings_days
+            )
+            for _, row in watchlist_df.iterrows()
+        ]
+        for f in as_completed(futures):
+            r = f.result()
+            if r is not None:
+                rows.append(r)
 
-    dist = abs(vals["c_last"] - support) / support
-    if dist <= 0.01:
-        strength += 2
-    elif dist <= 0.02:
-        strength += 1
+    if not rows:
+        return pd.DataFrame()
 
-    if vals["v_last"] > 1.3 * vals["vol_avg20"]:
-        strength += 2
-    elif vals["v_last"] > 1.1 * vals["vol_avg20"]:
-        strength += 1
-
-    if bull_eng or is_hammer: strength += 1
-    if confirmed: strength += 1
-
-    return {
-        "ticker": ticker,
-        "status": "OK",
-        "interval": interval,
-        "trend": trend,
-        "close": vals["c_last"],
-        "support": support,
-        "resistance": resistance,
-        "rsi": vals["rsi_last"],
-        "long_score": long_score,
-        "short_score": short_score,
-        "decision": decision,
-        "confirmed": confirmed_label,
-        "strength": strength,
-        "range_pos": round(vals["day_range_pos"] * 100, 1),
-    }
+    df = pd.DataFrame(rows)
+    rank_map = {"🔥 STRONG CANDIDATE": 0, "⚠️ WATCH": 1, "❌ SKIP (Earnings Risk)": 2, "❌ SKIP": 3}
+    df["_rank"] = df["Decision"].map(rank_map).fillna(4)
+    df = df.sort_values("_rank").drop(columns=["_rank"])
+    return df
 
 
 # ==============================================================================
@@ -618,38 +718,15 @@ with tab1:
     intervals = ["5m", "15m"]
 
     if st.button("Run Scanner", key="btn_run_atharv_scanner"):
+        st.session_state["tab1_results"] = {}
         for interval in intervals:
+            with st.spinner(f"Scanning {len(tickers)} tickers on {interval}..."):
+                st.session_state["tab1_results"][interval] = s1_run_interval_scan(watchlist_df, interval)
+
+    # Persisted display — survives reruns triggered elsewhere in the app (e.g. Tab 2 autorefresh)
+    if "tab1_results" in st.session_state:
+        for interval, df_res in st.session_state["tab1_results"].items():
             st.subheader(f"Interval Target: {interval}")
-            rows = []
-            for _, row in watchlist_df.iterrows():
-                t = row["Yahoo Ticker"]
-                company_name = row["Company Name"]
-                res = s1_analyze_ticker(t, interval)
-
-                if res["status"] != "OK":
-                    rows.append({
-                        "Ticker": t, "Company (Ticker)": f"{company_name} ({t})", "Decision": "NO ENTER",
-                        "Trend": "", "Close": "", "Support": "", "Resistance": "", "RSI": "",
-                        "LongScore": "", "ShortScore": "", "CONFIRMED": "", "Strength": 0
-                    })
-                else:
-                    rows.append({
-                        "Ticker": res["ticker"], "Company (Ticker)": f"{company_name} ({res['ticker']})",
-                        "Decision": res["decision"], "Trend": res["trend"], "Close": round(res["close"], 2),
-                        "Support": round(res["support"], 2), "Resistance": round(res["resistance"], 2),
-                        "RSI": round(res["rsi"], 1), "LongScore": res["long_score"],
-                        "ShortScore": res["short_score"], "CONFIRMED": res["confirmed"], "Strength": res["strength"],
-                    })
-
-            df_res = pd.DataFrame(rows)
-            df_res["Rank"] = df_res["Decision"].map({"BUY": 0, "WAIT": 1, "NO ENTER": 2}).fillna(3)
-            df_res["ConfRank"] = df_res["CONFIRMED"].map({"CONFIRMED": 0, "NOT CONFIRMED": 1}).fillna(2)
-
-            df_res = df_res.sort_values(
-                ["Rank", "ConfRank", "Strength", "LongScore"],
-                ascending=[True, True, False, False]
-            ).drop(columns=["Rank", "ConfRank"])
-
             styled = df_res.style.apply(
                 lambda col: [s1_decision_color(v) for v in col], subset=["Decision"]
             ).apply(
@@ -662,7 +739,14 @@ with tab1:
 # ==============================================================================
 with tab2:
     st.header("📈 Goel's Swing Strategy Engine")
-    st_autorefresh(interval=180000, key="refresh_goel_tab")
+
+    autorefresh_on = st.checkbox(
+        "Enable auto-refresh (every 3 min)", value=True, key="goel_autorefresh_toggle",
+        help="This reruns the whole app, not just this tab. Turn it off if you're actively "
+             "working in another tab (e.g. running the Overnight Screener) and don't want interruptions."
+    )
+    if autorefresh_on:
+        st_autorefresh(interval=180000, key="refresh_goel_tab")
 
     s2_watchlist = shared_load_watchlist()["Yahoo Ticker"].tolist()
     ticker_to_name = dict(zip(shared_load_watchlist()["Yahoo Ticker"], shared_load_watchlist()["Company Name"]))
@@ -697,43 +781,8 @@ with tab2:
 
     if s2_watchlist:
         st.info(f"Analyzing metrics for {len(s2_watchlist)} tracked parameters...")
-        results_s2 = []
-
-        for ticker in s2_watchlist:
-            df_s2 = s2_fetch_safe(ticker)
-            if df_s2.empty:
-                results_s2.append({
-                    'Ticker': ticker, 'Company Name': ticker_to_name.get(ticker, ticker), 'Enhanced Signal': 'NO DATA',
-                    'Current Price': '-', 'Entry Price': '-', 'Stop Loss (ATR)': '-', 'Target 2%': '-',
-                    'Target 3%': '-',
-                    'Volume Ratio': '-', 'ATR %': '-', 'Score': 0, 'Reason': 'No data', 'VIX Level': '-'
-                })
-                continue
-
-            df_s2 = s2_add_basic_indicators(df_s2)
-            df_s2 = s2_add_extra_indicators(df_s2)
-            signal, reason, vix_level = s2_enhanced_signal(df_s2)
-            last_row = df_s2.iloc[-1]
-
-            close_p = float(last_row['Close']) if 'Close' in last_row else 0
-            atr_v = float(last_row['ATR']) if 'ATR' in last_row else 0
-            v_ratio = float(last_row['Volume_Ratio']) if 'Volume_Ratio' in last_row else 0
-            a_pct = float(last_row['ATR_Pct']) if 'ATR_Pct' in last_row else 0
-
-            results_s2.append({
-                'Ticker': ticker, 'Company Name': ticker_to_name.get(ticker, ticker), 'Enhanced Signal': signal,
-                'Current Price': round(close_p, 2) if close_p else "-",
-                'Entry Price': round(close_p, 2) if close_p else "-",
-                'Stop Loss (ATR)': round(close_p - (atr_v * 1.5), 2) if close_p and atr_v else "-",
-                'Target 2%': round(close_p * 1.02, 2) if close_p else "-",
-                'Target 3%': round(close_p * 1.03, 2) if close_p else "-",
-                'Volume Ratio': round(v_ratio, 2) if v_ratio else "-", 'ATR %': round(a_pct, 2) if a_pct else "-",
-                'Score': 0, 'Reason': reason, 'VIX Level': vix_level
-            })
-
-        df_results_s2 = pd.DataFrame(results_s2)
-        df_results_s2['Score'] = df_results_s2.apply(s2_score_signal, axis=1)
-        df_results_s2['Rating'] = df_results_s2['Score'].apply(s2_rating_from_score)
+        with st.spinner("Fetching and scoring watchlist..."):
+            df_results_s2 = s2_run_scan(s2_watchlist, ticker_to_name)
 
         strong_df = df_results_s2[df_results_s2['Enhanced Signal'].str.contains('STRONG BUY', na=False)].sort_values(
             'Score', ascending=False)
@@ -789,8 +838,11 @@ with tab3:
         st.info("Computing mathematical rolling matrices against 252-day baseline...")
         collected_s3 = []
 
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            hist_map = dict(zip(tickers_s3, executor.map(s3_download_single_ticker, tickers_s3)))
+
         for ticker in tickers_s3:
-            df_hist = s3_download_single_ticker(ticker)
+            df_hist = hist_map.get(ticker)
             if df_hist is not None and not df_hist.empty and "Close" in df_hist.columns:
                 high_s = df_hist["High"] if "High" in df_hist.columns else df_hist["Close"]
                 h52_series = high_s.rolling(window=252, min_periods=1).max()
@@ -849,104 +901,21 @@ with tab4:
     s4n_exclude_earnings_days = st.slider("Exclude if earnings within next N days", 0, 5, 2, key="s4n_earn_days")
 
     if st.button("🔄 Run Overnight Screener", key="s4n_run_btn"):
-        s4n_rows = []
         with st.spinner("Scanning watchlist for overnight gap candidates..."):
-            for _, row in s4n_watchlist.iterrows():
-                t = row["Yahoo Ticker"]
-                name = row["Company Name"]
-                try:
-                    stock = yf.Ticker(t)
-                    df = stock.history(period="3mo", interval="1d", prepost=False)
-                    if df is None or df.empty or len(df) < 25:
-                        continue
-                    df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+            st.session_state["tab4_results"] = s4n_run_scan(
+                s4n_watchlist, s4n_min_range_pos, s4n_rsi_low, s4n_rsi_high,
+                s4n_min_vol_ratio, s4n_exclude_earnings_days
+            )
 
-                    df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
-                    df["RSI14"] = s1_rsi(df["Close"])
-                    df["VolAvg20"] = df["Volume"].rolling(20).mean()
-
-                    last = df.iloc[-1]
-                    c_last = float(last["Close"])
-                    h_last = float(last["High"])
-                    l_last = float(last["Low"])
-                    v_last = float(last["Volume"])
-                    rsi_last = float(df["RSI14"].iloc[-1])
-                    vol_avg20 = float(df["VolAvg20"].iloc[-1])
-                    ema20_last = float(df["EMA20"].iloc[-1])
-
-                    day_range = h_last - l_last
-                    range_pos = (c_last - l_last) / day_range if day_range > 0 else 0.5
-
-                    closing_strength_ok = range_pos >= s4n_min_range_pos
-                    rsi_ok = s4n_rsi_low <= rsi_last <= s4n_rsi_high
-                    vol_ok = (not np.isnan(vol_avg20)) and vol_avg20 > 0 and v_last >= s4n_min_vol_ratio * vol_avg20
-                    trend_ok = c_last > ema20_last
-
-                    earnings_soon = False
-                    earnings_note = "None found"
-                    try:
-                        edates = stock.earnings_dates
-                        if edates is not None and not edates.empty:
-                            now_ts = pd.Timestamp.now(tz=edates.index.tz) if edates.index.tz else pd.Timestamp.now()
-                            upcoming = edates.index[edates.index >= now_ts]
-                            if len(upcoming) > 0:
-                                days_out = (upcoming[0] - now_ts).days
-                                if days_out <= s4n_exclude_earnings_days:
-                                    earnings_soon = True
-                                    earnings_note = f"⚠️ In {days_out}d"
-                                else:
-                                    earnings_note = f"In {days_out}d"
-                    except Exception:
-                        earnings_note = "Unknown"
-
-                    score = sum([closing_strength_ok, rsi_ok, vol_ok, trend_ok, not earnings_soon])
-
-                    if earnings_soon:
-                        decision = "❌ SKIP (Earnings Risk)"
-                    elif score >= 4:
-                        decision = "🔥 STRONG CANDIDATE"
-                    elif score == 3:
-                        decision = "⚠️ WATCH"
-                    else:
-                        decision = "❌ SKIP"
-
-                    s4n_rows.append({
-                        "Ticker": t,
-                        "Company": name,
-                        "Decision": decision,
-                        "Score": f"{score}/5",
-                        "Close": round(c_last, 2),
-                        "Closing Strength %": round(range_pos * 100, 1),
-                        "RSI": round(rsi_last, 1),
-                        "Vol vs Avg": round(v_last / vol_avg20, 2) if vol_avg20 else "-",
-                        "Trend": "UP" if trend_ok else "DOWN",
-                        "Earnings": earnings_note,
-                        "Suggested Target (+2%)": round(c_last * 1.02, 2),
-                        "Suggested Stop (-1.5%)": round(c_last * 0.985, 2),
-                    })
-                except Exception:
-                    continue
-
-        if s4n_rows:
-            s4n_df = pd.DataFrame(s4n_rows)
-            s4n_rank_map = {"🔥 STRONG CANDIDATE": 0, "⚠️ WATCH": 1, "❌ SKIP (Earnings Risk)": 2, "❌ SKIP": 3}
-            s4n_df["_rank"] = s4n_df["Decision"].map(s4n_rank_map).fillna(4)
-            s4n_df = s4n_df.sort_values("_rank").drop(columns=["_rank"])
-
-            def s4n_color(val):
-                if "STRONG" in str(val):
-                    return "background-color:#2ECC71;color:black;"
-                elif "WATCH" in str(val):
-                    return "background-color:#F1C40F;color:black;"
-                elif "SKIP" in str(val):
-                    return "background-color:#E74C3C;color:white;"
-                return ""
-
+    # Persisted display — this is what keeps your results on screen even if a
+    # background rerun happens elsewhere in the app (e.g. Tab 2's autorefresh).
+    if "tab4_results" in st.session_state:
+        s4n_df = st.session_state["tab4_results"]
+        if s4n_df is not None and not s4n_df.empty:
             st.dataframe(
                 s4n_df.style.map(s4n_color, subset=["Decision"]),
                 use_container_width=True, hide_index=True
             )
-
             st.caption(
                 "⚠️ Reminder: overnight positions can't be stopped out until the market reopens. "
                 "Size positions assuming the stop could be missed by a gap, not hit cleanly. "
